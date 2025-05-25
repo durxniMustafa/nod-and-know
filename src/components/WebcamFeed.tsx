@@ -20,7 +20,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
   // Use the MediaPipe face detection hook
-  const { faces, fps, isLoading, error } = useMediaPipeFaceDetection(
+  const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
     videoRef,
     canvasRef,
     onGestureDetected
@@ -172,7 +172,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         )}
 
         {/* Instructions */}
-        <div className="flex justify-center gap-8 text-sm">
+        <div className="flex justify-center gap-8 text-base md:text-lg">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-green-500 rounded-full"></div>
             <span className="text-green-400">Nod = YES</span>
@@ -182,6 +182,15 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
             <span className="text-red-400">Shake = NO</span>
           </div>
         </div>
+
+        {isPreparing && (
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-900/20 border border-blue-600 rounded-lg">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <span className="text-blue-400 text-sm">Hold still to confirm...</span>
+            </div>
+          </div>
+        )}
 
         {/* Gesture cooldown indicator */}
         {faces.some(face => face.isInCooldown) && (

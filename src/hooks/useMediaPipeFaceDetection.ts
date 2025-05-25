@@ -7,6 +7,8 @@ interface FaceDetectionResult {
   fps: number;
   isLoading: boolean;
   error: string | null;
+  /** Indicates a gesture is in progress but not yet confirmed */
+  isPreparing: boolean;
 }
 
 interface GestureDetection {
@@ -23,7 +25,8 @@ export const useMediaPipeFaceDetection = (
     faces: [],
     fps: 0,
     isLoading: true,
-    error: null
+    error: null,
+    isPreparing: false
   });
 
   const faceMeshRef = useRef<FaceMesh | null>(null);
@@ -33,12 +36,13 @@ export const useMediaPipeFaceDetection = (
   const gestureHistoryRef = useRef<GestureDetection[]>([]);
   const lastGestureTimeRef = useRef(0);
   const previousNosePositionRef = useRef<{ x: number; y: number } | null>(null);
+  const preparingRef = useRef(false);
 
-  const GESTURE_COOLDOWN_MS = 2500;
+  const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
-  const REQUIRED_GESTURE_FRAMES = 4;
-  const NOD_THRESHOLD = 0.03;
-  const SHAKE_THRESHOLD = 0.04;
+  const REQUIRED_GESTURE_FRAMES = 6;
+  const NOD_THRESHOLD = 0.08;
+  const SHAKE_THRESHOLD = 0.12;
 
   const detectGesture = useCallback((landmarks: any) => {
     if (!landmarks || landmarks.length === 0) return null;
@@ -78,29 +82,51 @@ export const useMediaPipeFaceDetection = (
   }, []);
 
   const processGestureHistory = useCallback(() => {
-    if (gestureHistoryRef.current.length < REQUIRED_GESTURE_FRAMES) return;
+    const len = gestureHistoryRef.current.length;
+
+    if (len === 0) {
+      if (preparingRef.current) {
+        preparingRef.current = false;
+        setResult(prev => ({ ...prev, isPreparing: false }));
+      }
+      return;
+    }
 
     const recentGestures = gestureHistoryRef.current.slice(-REQUIRED_GESTURE_FRAMES);
     const gestureTypes = recentGestures.map(g => g.gesture);
-    const avgConfidence = recentGestures.reduce((sum, g) => sum + g.confidence, 0) / recentGestures.length;
-
-    // Check if we have consistent gesture detection
     const yesCount = gestureTypes.filter(g => g === 'yes').length;
     const noCount = gestureTypes.filter(g => g === 'no').length;
-
+    const majority = Math.max(yesCount, noCount);
     const now = Date.now();
     const timeSinceLastGesture = now - lastGestureTimeRef.current;
 
-    if (timeSinceLastGesture > GESTURE_COOLDOWN_MS && avgConfidence > GESTURE_CONFIDENCE_THRESHOLD) {
-      if (yesCount >= REQUIRED_GESTURE_FRAMES * 0.75) {
-        onGestureDetected('yes');
-        lastGestureTimeRef.current = now;
-        gestureHistoryRef.current = [];
-      } else if (noCount >= REQUIRED_GESTURE_FRAMES * 0.75) {
-        onGestureDetected('no');
-        lastGestureTimeRef.current = now;
-        gestureHistoryRef.current = [];
+    if (len < REQUIRED_GESTURE_FRAMES && majority === len && !preparingRef.current) {
+      preparingRef.current = true;
+      setResult(prev => ({ ...prev, isPreparing: true }));
+    }
+
+    if (len >= REQUIRED_GESTURE_FRAMES) {
+      const avgConfidence = recentGestures.reduce((sum, g) => sum + g.confidence, 0) / recentGestures.length;
+      if (timeSinceLastGesture > GESTURE_COOLDOWN_MS && avgConfidence > GESTURE_CONFIDENCE_THRESHOLD) {
+        if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+          onGestureDetected('yes');
+          lastGestureTimeRef.current = now;
+          gestureHistoryRef.current = [];
+          preparingRef.current = false;
+          setResult(prev => ({ ...prev, isPreparing: false }));
+        } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+          onGestureDetected('no');
+          lastGestureTimeRef.current = now;
+          gestureHistoryRef.current = [];
+          preparingRef.current = false;
+          setResult(prev => ({ ...prev, isPreparing: false }));
+        }
       }
+    }
+
+    if (preparingRef.current && majority !== len) {
+      preparingRef.current = false;
+      setResult(prev => ({ ...prev, isPreparing: false }));
     }
   }, [onGestureDetected]);
 

@@ -5,13 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, Send } from 'lucide-react';
-
-interface ChatMessage {
-  id: string;
-  text: string;
-  timestamp: Date;
-  isOwn: boolean;
-}
+import { websocketService, ChatMessage } from '@/services/websocketService';
+import { dataService } from '@/services/dataService';
 
 interface ChatInterfaceProps {
   question: string;
@@ -19,97 +14,109 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      text: `Discussion topic: "${question}"`,
-      timestamp: new Date(),
-      isOwn: false
-    },
-    {
-      id: '2', 
-      text: 'Welcome to the security discussion! Share your thoughts and experiences.',
-      timestamp: new Date(),
-      isOwn: false
-    }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // Simulate WebSocket connection
   useEffect(() => {
-    const connectTimer = setTimeout(() => {
-      setIsConnected(true);
-    }, 1000);
+    // Log chat opened event
+    dataService.logAnalyticsEvent('chat_opened', { question });
 
-    // Simulate incoming messages
-    const messageTimer = setTimeout(() => {
-      addMessage("I always use different passwords for important accounts!", false);
-    }, 5000);
+    // Initialize chat with topic message
+    const topicMessage: ChatMessage = {
+      id: 'topic',
+      text: `Discussion topic: "${question}"`,
+      timestamp: new Date(),
+      userId: 'system',
+      username: 'SecureMatch'
+    };
 
-    const messageTimer2 = setTimeout(() => {
-      addMessage("Two-factor auth saved me once when someone tried to hack my email.", false);
-    }, 12000);
+    const welcomeMessage: ChatMessage = {
+      id: 'welcome',
+      text: 'Welcome! Share your security experiences and learn from others. All conversations are anonymous.',
+      timestamp: new Date(),
+      userId: 'system',
+      username: 'SecureMatch'
+    };
+
+    setMessages([topicMessage, welcomeMessage]);
+
+    // Connect to WebSocket
+    websocketService.connect({
+      onMessage: (message) => {
+        setMessages(prev => [...prev, message]);
+      },
+      onUserJoined: (username) => {
+        setOnlineUsers(prev => [...prev, username]);
+      },
+      onUserLeft: (username) => {
+        setOnlineUsers(prev => prev.filter(u => u !== username));
+      },
+      onConnectionStatusChange: (connected) => {
+        setIsConnected(connected);
+      }
+    });
+
+    // Join room based on question
+    const roomId = `question_${btoa(question).slice(0, 8)}`;
+    websocketService.joinRoom(roomId);
 
     return () => {
-      clearTimeout(connectTimer);
-      clearTimeout(messageTimer);
-      clearTimeout(messageTimer2);
+      websocketService.leaveRoom();
+      websocketService.disconnect();
     };
-  }, []);
+  }, [question]);
 
-  const addMessage = (text: string, isOwn: boolean) => {
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      text,
-      timestamp: new Date(),
-      isOwn
-    };
-    setMessages(prev => [...prev, message]);
-  };
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    }
+  }, [messages]);
 
   const handleSendMessage = () => {
     if (newMessage.trim() && isConnected) {
-      addMessage(newMessage, true);
+      websocketService.sendMessage(newMessage.trim());
       setNewMessage('');
-      
-      // Simulate response delay
-      setTimeout(() => {
-        const responses = [
-          "That's a great point!",
-          "I hadn't thought of that before.",
-          "Same here, security is so important.",
-          "Thanks for sharing your experience!",
-          "Good reminder for everyone."
-        ];
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        addMessage(randomResponse, false);
-      }, 2000 + Math.random() * 3000);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       handleSendMessage();
     }
   };
+
+  const currentUserId = websocketService.getCurrentUserId();
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
-          <div>
+          <div className="flex-1">
             <h2 className="text-xl font-semibold text-white">Security Discussion</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <span className="text-sm text-gray-400">
-                {isConnected ? 'Connected' : 'Connecting...'}
-              </span>
+            <div className="flex items-center gap-4 mt-1">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                <span className="text-sm text-gray-400">
+                  {isConnected ? 'Connected' : 'Connecting...'}
+                </span>
+              </div>
+              {onlineUsers.length > 0 && (
+                <div className="text-sm text-gray-400">
+                  {onlineUsers.length + 1} participant{onlineUsers.length !== 0 ? 's' : ''}
+                </div>
+              )}
             </div>
           </div>
-          <Button onClick={onClose} variant="ghost" size="sm">
+          <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -117,25 +124,37 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
         {/* Messages */}
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-              >
+            {messages.map((message) => {
+              const isOwnMessage = message.userId === currentUserId;
+              const isSystemMessage = message.userId === 'system';
+              
+              return (
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    message.isOwn
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-100'
-                  }`}
+                  key={message.id}
+                  className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p>{message.text}</p>
-                  <div className="text-xs opacity-70 mt-1">
-                    {message.timestamp.toLocaleTimeString()}
+                  <div
+                    className={`max-w-[80%] p-3 rounded-lg ${
+                      isSystemMessage 
+                        ? 'bg-purple-900/30 text-purple-200 border border-purple-700'
+                        : isOwnMessage
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-100'
+                    }`}
+                  >
+                    {!isSystemMessage && !isOwnMessage && (
+                      <div className="text-xs text-gray-400 mb-1">
+                        {message.username}
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap">{message.text}</p>
+                    <div className="text-xs opacity-70 mt-1">
+                      {message.timestamp.toLocaleTimeString()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
 
@@ -148,19 +167,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
               onKeyPress={handleKeyPress}
               placeholder={isConnected ? "Share your thoughts..." : "Connecting..."}
               disabled={!isConnected}
-              className="bg-gray-800 border-gray-600 text-white"
+              className="bg-gray-800 border-gray-600 text-white placeholder-gray-400"
+              maxLength={500}
             />
             <Button 
               onClick={handleSendMessage}
               disabled={!newMessage.trim() || !isConnected}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
             </Button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">
-            💡 Tip: Share your personal experiences to help others learn about security best practices.
-          </p>
+          <div className="flex justify-between items-center mt-2">
+            <p className="text-xs text-gray-400">
+              💡 Tip: Share experiences to help others learn about security practices
+            </p>
+            <div className="text-xs text-gray-500">
+              {newMessage.length}/500
+            </div>
+          </div>
         </div>
       </Card>
     </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import WebcamFeed from '@/components/WebcamFeed';
 import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
+import { dataService } from '@/services/dataService';
 
 const SECURITY_QUESTIONS = [
   "Do you reuse the same password across multiple accounts?",
@@ -26,44 +27,103 @@ const Index = () => {
   const [fallbackMode, setFallbackMode] = useState(false);
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
+  const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
+
+  // Initialize session and load persisted data
+  useEffect(() => {
+    // Log session start
+    dataService.logAnalyticsEvent('session_start');
+    
+    // Load current question from persistence
+    const savedQuestion = dataService.getCurrentQuestion();
+    setCurrentQuestion(savedQuestion);
+    
+    // Load votes for current question
+    const savedVotes = dataService.getVotesForQuestion(savedQuestion);
+    setVotes(savedVotes);
+  }, []);
 
   // Rotate questions every 15 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentQuestion((prev) => (prev + 1) % SECURITY_QUESTIONS.length);
-      setVotes({ yes: 0, no: 0 }); // Reset votes for new question
+      const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
+      setCurrentQuestion(nextQuestion);
+      
+      // Persist current question
+      dataService.setCurrentQuestion(nextQuestion);
+      
+      // Load votes for new question
+      const questionVotes = dataService.getVotesForQuestion(nextQuestion);
+      setVotes(questionVotes);
+      
+      // Update session stats
+      setSessionStats(dataService.getSessionStats());
     }, 15000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [currentQuestion]);
 
   // Monitor FPS for fallback mode
   useEffect(() => {
     if (fps < 15) {
       setFallbackMode(true);
-    } else {
+    } else if (fps > 20) {
+      // Only exit fallback mode if FPS is consistently good
       setFallbackMode(false);
     }
   }, [fps]);
 
   const handleGestureDetected = (gesture: 'yes' | 'no') => {
-    setVotes(prev => ({
-      ...prev,
-      [gesture]: prev[gesture] + 1
-    }));
+    // Add vote to persistence
+    const newVotes = dataService.addVote(currentQuestion, gesture);
+    setVotes(newVotes);
+    
+    // Log gesture detection
+    dataService.logAnalyticsEvent('gesture_detected', { 
+      questionId: currentQuestion, 
+      gesture,
+      fps 
+    });
+    
+    // Update session stats
+    setSessionStats(dataService.getSessionStats());
     
     // Trigger confetti for minority vote
-    const total = votes.yes + votes.no + 1;
-    const newCount = votes[gesture] + 1;
-    if (total > 3 && newCount / total < 0.3) {
-      // Minority opinion - trigger celebration
-      console.log('Confetti burst for minority opinion!');
+    const total = newVotes.yes + newVotes.no;
+    const minorityThreshold = 0.25;
+    const yesPercentage = newVotes.yes / total;
+    const noPercentage = newVotes.no / total;
+    
+    if (total > 3 && (yesPercentage < minorityThreshold || noPercentage < minorityThreshold)) {
+      // Create confetti effect
+      console.log('🎉 Minority opinion detected! Great discussion starter.');
+      // In a real implementation, this could trigger a visual confetti animation
     }
   };
 
   const handleFaceData = (faces: any[], currentFps: number) => {
     setDetectedFaces(faces);
     setFps(currentFps);
+  };
+
+  const handleClearData = () => {
+    if (confirm('Clear all session data? This will reset votes and statistics.')) {
+      dataService.clearSessionData();
+      setVotes({ yes: 0, no: 0 });
+      setCurrentQuestion(0);
+      setSessionStats(dataService.getSessionStats());
+    }
+  };
+
+  const handleExportData = () => {
+    const data = dataService.exportAnonymizedData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `securematch_data_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -74,13 +134,19 @@ const Index = () => {
           <h1 className="text-5xl font-bold text-white mb-4 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
             SecureMatch
           </h1>
-          <p className="text-xl text-gray-300 mb-2">Gesture-Driven Security Dialogue</p>
-          <div className="flex justify-center gap-4 text-sm text-gray-400">
+          <p className="text-xl text-gray-300 mb-2">Production Gesture-Driven Security Dialogue</p>
+          <div className="flex justify-center gap-4 text-sm text-gray-400 flex-wrap">
             <Badge variant="outline" className="text-green-400 border-green-400">
               FPS: {Math.round(fps)}
             </Badge>
             <Badge variant="outline" className="text-blue-400 border-blue-400">
               Faces: {detectedFaces.length}
+            </Badge>
+            <Badge variant="outline" className="text-purple-400 border-purple-400">
+              Votes: {sessionStats.totalVotes}
+            </Badge>
+            <Badge variant="outline" className="text-yellow-400 border-yellow-400">
+              Session: {Math.round(sessionStats.sessionDuration / 1000 / 60)}m
             </Badge>
             {fallbackMode && (
               <Badge variant="destructive">
@@ -112,25 +178,44 @@ const Index = () => {
                 fallbackMode={fallbackMode}
               />
               
-              {/* Manual Controls for Testing */}
-              <div className="mt-4 flex gap-4 justify-center">
+              {/* Development Controls */}
+              <div className="mt-4 flex gap-2 justify-center flex-wrap">
                 <Button 
                   onClick={() => handleGestureDetected('yes')}
                   className="bg-green-600 hover:bg-green-700"
+                  size="sm"
                 >
-                  Manual YES
+                  Test YES
                 </Button>
                 <Button 
                   onClick={() => handleGestureDetected('no')}
                   className="bg-red-600 hover:bg-red-700"
+                  size="sm"
                 >
-                  Manual NO
+                  Test NO
                 </Button>
                 <Button 
                   onClick={() => setFallbackMode(!fallbackMode)}
                   variant="outline"
+                  size="sm"
                 >
                   Toggle Fallback
+                </Button>
+                <Button 
+                  onClick={handleClearData}
+                  variant="outline"
+                  size="sm"
+                  className="text-yellow-400 border-yellow-400"
+                >
+                  Clear Data
+                </Button>
+                <Button 
+                  onClick={handleExportData}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-400 border-blue-400"
+                >
+                  Export Data
                 </Button>
               </div>
             </Card>
@@ -158,8 +243,27 @@ const Index = () => {
                 💬 Join Discussion
               </Button>
               <p className="text-gray-400 text-sm mt-2">
-                Share your thoughts with others
+                Anonymous chat • No registration required
               </p>
+            </Card>
+
+            {/* Session Statistics */}
+            <Card className="bg-black/50 border-gray-700 p-4">
+              <h3 className="text-lg font-semibold text-white mb-3">Session Stats</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Questions Answered:</span>
+                  <span className="text-white">{sessionStats.questionsAnswered}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Gestures Detected:</span>
+                  <span className="text-white">{sessionStats.gestureCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Chat Opened:</span>
+                  <span className="text-white">{sessionStats.chatOpened ? 'Yes' : 'No'}</span>
+                </div>
+              </div>
             </Card>
           </div>
         </div>

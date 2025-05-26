@@ -1,3 +1,5 @@
+import { simpleConfetti } from '@/lib/confetti';
+
 interface VoteData {
   questionId: number;
   yes: number;
@@ -18,10 +20,25 @@ interface AnalyticsEvent {
   data: any;
 }
 
+interface Goal {
+  id: string;
+  text: string;
+  completed: boolean;
+  createdAt: number;
+  completedAt?: number;
+}
+
+interface LeaderboardEntry {
+  username: string;
+  completed: number;
+}
+
 class DataService {
   private readonly STORAGE_KEY = 'securematch_session';
   private readonly ANALYTICS_KEY = 'securematch_analytics';
   private readonly VOTE_PERSISTENCE_KEY = 'securematch_votes';
+  private readonly GOALS_KEY = 'securematch_goals';
+  private readonly LEADERBOARD_KEY = 'securematch_leaderboard';
 
   // Session Management
   getSessionData(): SessionData {
@@ -49,6 +66,92 @@ class DataService {
     } catch (error) {
       console.error('Failed to save session data:', error);
     }
+  }
+
+  // Goal Management
+  private getStoredGoals(): Goal[] {
+    const stored = localStorage.getItem(this.GOALS_KEY);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (error) {
+        console.error('Failed to parse goals:', error);
+      }
+    }
+    return [];
+  }
+
+  private saveGoals(goals: Goal[]): void {
+    try {
+      localStorage.setItem(this.GOALS_KEY, JSON.stringify(goals));
+    } catch (error) {
+      console.error('Failed to save goals:', error);
+    }
+  }
+
+  getGoals(): Goal[] {
+    return this.getStoredGoals();
+  }
+
+  addGoal(text: string): Goal {
+    const goals = this.getStoredGoals();
+    const goal: Goal = {
+      id: 'goal_' + Math.random().toString(36).substr(2, 9),
+      text,
+      completed: false,
+      createdAt: Date.now()
+    };
+    goals.push(goal);
+    this.saveGoals(goals);
+    return goal;
+  }
+
+  completeGoal(id: string, username: string): void {
+    const goals = this.getStoredGoals();
+    const goal = goals.find(g => g.id === id);
+    if (!goal || goal.completed) return;
+    goal.completed = true;
+    goal.completedAt = Date.now();
+    this.saveGoals(goals);
+    this.updateLeaderboard(username);
+    simpleConfetti();
+  }
+
+  // Leaderboard Management
+  private getStoredLeaderboard(): LeaderboardEntry[] {
+    const stored = localStorage.getItem(this.LEADERBOARD_KEY);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (error) {
+        console.error('Failed to parse leaderboard:', error);
+      }
+    }
+    return [];
+  }
+
+  private saveLeaderboard(lb: LeaderboardEntry[]): void {
+    try {
+      localStorage.setItem(this.LEADERBOARD_KEY, JSON.stringify(lb));
+    } catch (error) {
+      console.error('Failed to save leaderboard:', error);
+    }
+  }
+
+  getLeaderboard(): LeaderboardEntry[] {
+    return this.getStoredLeaderboard();
+  }
+
+  private updateLeaderboard(username: string) {
+    const lb = this.getStoredLeaderboard();
+    let entry = lb.find(e => e.username === username);
+    if (!entry) {
+      entry = { username, completed: 0 };
+      lb.push(entry);
+    }
+    entry.completed += 1;
+    lb.sort((a, b) => b.completed - a.completed);
+    this.saveLeaderboard(lb);
   }
 
   // Vote Management
@@ -179,4 +282,4 @@ class DataService {
 }
 
 export const dataService = new DataService();
-export type { SessionData, VoteData, AnalyticsEvent };
+export type { SessionData, VoteData, AnalyticsEvent, Goal, LeaderboardEntry };

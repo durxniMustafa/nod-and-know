@@ -6,6 +6,7 @@ interface WebcamFeedProps {
   onGestureDetected: (gesture: 'yes' | 'no') => void;
   onFaceData: (faces: any[], fps: number) => void;
   fallbackMode: boolean;
+  debugMode?: boolean;
 }
 
 interface HeadPose {
@@ -14,17 +15,17 @@ interface HeadPose {
   roll: number;
 }
 
-const WebcamFeed: React.FC<WebcamFeedProps> = ({ 
-  onGestureDetected, 
-  onFaceData, 
-  fallbackMode 
+const WebcamFeed: React.FC<WebcamFeedProps> = ({
+  onGestureDetected,
+  onFaceData,
+  fallbackMode,
+  debugMode = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Instead of storing the stream in React state (which can trigger extra re-renders),
   // use a ref so we can stop tracks on unmount without re-instantiating.
-  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [headPoseData, setHeadPoseData] = useState<HeadPose | null>(null);
@@ -33,47 +34,19 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
     videoRef,
     canvasRef,
-    onGestureDetected
+    onGestureDetected,
+    !fallbackMode
   );
-
-  // ------------------------------------------------------------------------------
-  // 1) Initialize (or tear down) the camera when fallbackMode changes
-  // ------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // 1) Reset any camera error when exiting fallback mode
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    let localStream: MediaStream;
+    if (!fallbackMode) {
+      setCameraError(null);
+    }
+  }, [fallbackMode]);
 
-    (async () => {
-      if (!fallbackMode) {
-        try {
-          // Lowered resolution
-          localStream = await navigator.mediaDevices.getUserMedia({ 
-            video: {
-              width: { ideal: 320 },
-              height: { ideal: 240 },
-              frameRate: { ideal: 20 },
-            },
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = localStream;
-            setCameraError(null);
-          }
-          cameraStreamRef.current = localStream;
-        } catch (err) {
-          console.error('Camera access error:', err);
-          setCameraError('Camera access denied. Please allow camera permissions and refresh the page.');
-        }
-      }
-    })();
 
-    // Cleanup function: stop the camera tracks if we unmount or switch to fallbackMode
-    return () => {
-      if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
-        cameraStreamRef.current = null;
-      }
-    };
-  }, [fallbackMode]); 
-  // Note we only watch fallbackMode, NOT cameraStreamRef here.
 
   // ------------------------------------------------------------------------------
   // 2) Report face data to parent + track headPose
@@ -156,6 +129,19 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           style={{ display: fallbackMode ? 'none' : 'block' }}
         />
 
+        {debugMode && !fallbackMode && (
+          <div className="absolute top-0 left-0 bg-black/70 text-white text-xs p-2 space-y-1 max-h-60 overflow-y-auto">
+            {faces.map((face) => (
+              <div key={face.id} className="border-b border-gray-600 pb-1 mb-1 last:border-none last:mb-0">
+                <div>Face {face.id}</div>
+                <div>Rect: {face.rect.x.toFixed(0)}, {face.rect.y.toFixed(0)}, {face.rect.width.toFixed(0)}x{face.rect.height.toFixed(0)}</div>
+                <div>Nose: {face.nose.x.toFixed(2)}, {face.nose.y.toFixed(2)}</div>
+                <div>Δx: {face.deltaX.toFixed(3)} Δy: {face.deltaY.toFixed(3)}</div>
+                {face.gesture && (<div>Gesture: {face.gesture} ({face.confidence.toFixed(2)})</div>)}
+              </div>
+            ))}
+          </div>
+        )}
         {/* Fallback overlay */}
         {fallbackMode && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center min-h-[300px]">

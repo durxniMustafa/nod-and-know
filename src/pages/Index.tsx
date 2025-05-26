@@ -25,6 +25,7 @@ const Index = () => {
   const [votes, setVotes] = useState({ yes: 0, no: 0 });
   const [isDiscussionOpen, setIsDiscussionOpen] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
@@ -172,10 +173,11 @@ const Index = () => {
                 </p>
               </div>
               
-              <WebcamFeed 
+              <WebcamFeed
                 onGestureDetected={handleGestureDetected}
                 onFaceData={handleFaceData}
                 fallbackMode={fallbackMode}
+                debugMode={debugMode}
               />
               
               {/* Development Controls */}
@@ -209,13 +211,21 @@ const Index = () => {
                 >
                   Clear Data
                 </Button>
-                <Button 
+                <Button
                   onClick={handleExportData}
                   variant="outline"
                   size="sm"
                   className="text-blue-400 border-blue-400"
                 >
                   Export Data
+                </Button>
+                <Button
+                  onClick={() => setDebugMode(!debugMode)}
+                  variant="outline"
+                  size="sm"
+                  className="text-purple-400 border-purple-400"
+                >
+                  {debugMode ? 'Hide Debug' : 'Show Debug'}
                 </Button>
               </div>
             </Card>

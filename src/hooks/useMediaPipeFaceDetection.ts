@@ -20,6 +20,11 @@ export interface FaceData {
   nose: { x: number; y: number };
   isInCooldown: boolean;
   lastGesture?: 'yes' | 'no' | null;
+  headPose?: {
+    pitch: number;
+    yaw: number;
+    roll: number;
+  };
 }
 
 interface FaceDetectionResult {

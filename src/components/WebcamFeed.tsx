@@ -8,12 +8,10 @@ interface WebcamFeedProps {
   fallbackMode: boolean;
 }
 
-// Define a type for head pose data for clarity
 interface HeadPose {
   pitch: number;
   yaw: number;
   roll: number;
-  // Add other relevant coordinates if available, e.g., x, y, z
 }
 
 const WebcamFeed: React.FC<WebcamFeedProps> = ({ 
@@ -23,71 +21,83 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Instead of storing the stream in React state (which can trigger extra re-renders),
+  // use a ref so we can stop tracks on unmount without re-instantiating.
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [headPoseData, setHeadPoseData] = useState<HeadPose | null>(null);
 
-  // Use the MediaPipe face detection hook
+  // MediaPipe face detection hook (make sure inside that hook you only init pipeline once!)
   const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
     videoRef,
     canvasRef,
     onGestureDetected
   );
 
-  // Initialize camera
+  // ------------------------------------------------------------------------------
+  // 1) Initialize (or tear down) the camera when fallbackMode changes
+  // ------------------------------------------------------------------------------
   useEffect(() => {
-    const initCamera = async () => {
-      try {
-        // LOWERED the resolution from 640x480 down to 480x360
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: { ideal: 480 },
-            height: { ideal: 360 },
-            frameRate: { ideal: 30 }
-          } 
-        });
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setCameraStream(stream);
-          setCameraError(null);
+    let localStream: MediaStream;
+
+    (async () => {
+      if (!fallbackMode) {
+        try {
+          // Lowered resolution
+          localStream = await navigator.mediaDevices.getUserMedia({ 
+            video: {
+              width: { ideal: 320 },
+              height: { ideal: 240 },
+              frameRate: { ideal: 20 },
+            },
+          });
+          if (videoRef.current) {
+            videoRef.current.srcObject = localStream;
+            setCameraError(null);
+          }
+          cameraStreamRef.current = localStream;
+        } catch (err) {
+          console.error('Camera access error:', err);
+          setCameraError('Camera access denied. Please allow camera permissions and refresh the page.');
         }
-      } catch (err) {
-        console.error('Camera access error:', err);
-        setCameraError('Camera access denied. Please allow camera permissions and refresh the page.');
       }
-    };
+    })();
 
-    if (!fallbackMode) {
-      initCamera();
-    }
-
+    // Cleanup function: stop the camera tracks if we unmount or switch to fallbackMode
     return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
       }
     };
-  }, [fallbackMode, cameraStream]);
+  }, [fallbackMode]); 
+  // Note we only watch fallbackMode, NOT cameraStreamRef here.
 
-  // Report face data to parent and update head pose data
+  // ------------------------------------------------------------------------------
+  // 2) Report face data to parent + track headPose
+  // ------------------------------------------------------------------------------
   useEffect(() => {
     onFaceData(faces, fps);
-    // Assuming faces[0] contains headPose data like { pitch, yaw, roll }
-    if (faces.length > 0 && faces[0]?.headPose) { 
+
+    if (faces.length > 0 && faces[0]?.headPose) {
       setHeadPoseData(faces[0].headPose as HeadPose);
     } else {
       setHeadPoseData(null);
     }
   }, [faces, fps, onFaceData]);
 
-  // Handle canvas sizing
+  // ------------------------------------------------------------------------------
+  // 3) Adjust canvas size after video metadata loads
+  // ------------------------------------------------------------------------------
   useEffect(() => {
     if (canvasRef.current && videoRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
+
       const updateCanvasSize = () => {
-        // These widths match the camera feed, but can default to something smaller if needed
+        // Use the actual video dimensions if available
         canvas.width = video.videoWidth || 480;
         canvas.height = video.videoHeight || 360;
       };
@@ -97,6 +107,9 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     }
   }, []);
 
+  // ------------------------------------------------------------------------------
+  // 4) Render UI
+  // ------------------------------------------------------------------------------
   if (cameraError || error) {
     return (
       <Card className="bg-red-900/20 border-red-700 p-8 text-center">
@@ -127,7 +140,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
             </div>
           </div>
         )}
-        
+
         <video
           ref={videoRef}
           className="w-full h-auto max-h-96"
@@ -136,22 +149,24 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           playsInline
           style={{ display: fallbackMode ? 'none' : 'block' }}
         />
-        
+
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
           style={{ display: fallbackMode ? 'none' : 'block' }}
         />
 
+        {/* Fallback overlay */}
         {fallbackMode && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center min-h-[300px]">
             <div className="text-center text-white space-y-4">
               <div className="w-32 h-32 bg-white mb-4 mx-auto rounded-lg flex items-center justify-center">
                 <div className="text-black font-mono text-xs">
+                  {/* Example placeholder pixel pattern */}
                   <div className="grid grid-cols-8 gap-1">
                     {Array.from({ length: 64 }).map((_, i) => (
-                      <div 
-                        key={i} 
+                      <div
+                        key={i}
                         className={`w-2 h-2 ${Math.random() > 0.5 ? 'bg-black' : 'bg-white'}`}
                       />
                     ))}
@@ -167,27 +182,32 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         )}
       </div>
 
-      {/* Status and Instructions */}
+      {/* Status and instructions */}
       <div className="mt-4 space-y-3">
-        {/* Real-time status */}
         {!fallbackMode && (
           <div className="flex justify-center gap-4 text-sm mb-2">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${faces.length > 0 ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  faces.length > 0 ? 'bg-green-500' : 'bg-gray-500'
+                }`}
+              />
               <span className="text-gray-300">
                 {faces.length} face{faces.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${fps > 15 ? 'bg-green-500' : fps > 10 ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
-              <span className="text-gray-300">
-                {Math.round(fps)} FPS
-              </span>
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  fps > 15 ? 'bg-green-500' : fps > 10 ? 'bg-yellow-500' : 'bg-red-500'
+                }`}
+              />
+              <span className="text-gray-300">{Math.round(fps)} FPS</span>
             </div>
           </div>
         )}
 
-        {/* Head Movement Debugger UI */}
+        {/* Debugging head-pose data */}
         {!fallbackMode && headPoseData && faces.length > 0 && (
           <div className="text-center bg-gray-800 p-2 rounded-md mb-3 text-xs text-gray-300">
             <h4 className="font-semibold mb-1 text-sm text-white">Head Pose (Face 1):</h4>
@@ -200,11 +220,11 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         {/* Instructions */}
         <div className="flex justify-center gap-8 text-base md:text-lg">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+            <div className="w-4 h-4 bg-green-500 rounded-full" />
             <span className="text-green-400">Nod = YES</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+            <div className="w-4 h-4 bg-red-500 rounded-full" />
             <span className="text-red-400">Shake = NO</span>
           </div>
         </div>
@@ -212,17 +232,16 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         {isPreparing && (
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-900/20 border border-blue-600 rounded-lg">
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
               <span className="text-blue-400 text-sm">Hold still to confirm...</span>
             </div>
           </div>
         )}
 
-        {/* Gesture cooldown indicator */}
-        {faces.some(face => face.isInCooldown) && (
+        {faces.some((face) => face.isInCooldown) && (
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-900/20 border border-yellow-600 rounded-lg">
-              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
               <span className="text-yellow-400 text-sm">Processing gesture...</span>
             </div>
           </div>

@@ -262,6 +262,10 @@ export const useMediaPipeFaceDetection = (
   useEffect(() => {
     const initializeMediaPipe = async () => {
       try {
+        if (faceMeshRef.current) {
+          faceMeshRef.current.close?.();
+        }
+
         const faceMesh = new FaceMesh({
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         });
@@ -313,6 +317,11 @@ export const useMediaPipeFaceDetection = (
     return () => {
       if (cameraRef.current) {
         cameraRef.current.stop();
+        cameraRef.current = null;
+      }
+      if (faceMeshRef.current) {
+        faceMeshRef.current.close?.();
+        faceMeshRef.current = null;
       }
     };
   }, [onResults, videoRef, canvasRef]);

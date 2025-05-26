@@ -9,7 +9,7 @@ interface GestureDetection {
   deltaY: number;
 }
 
-interface FaceData {
+export interface FaceData {
   id: number;
   landmarks: any[];
   rect: { x: number; y: number; width: number; height: number };
@@ -19,6 +19,7 @@ interface FaceData {
   deltaY: number;
   nose: { x: number; y: number };
   isInCooldown: boolean;
+  lastGesture?: 'yes' | 'no' | null;
 }
 
 interface FaceDetectionResult {
@@ -36,6 +37,7 @@ export const useMediaPipeFaceDetection = (
   videoRef: React.RefObject<HTMLVideoElement>,
   canvasRef: React.RefObject<HTMLCanvasElement>,
   onGestureDetected: (gesture: 'yes' | 'no') => void,
+  onConflictPair?: (pair: { yes: FaceData; no: FaceData }) => void,
   enabled: boolean = true,
   drawFaceBoxes: boolean = true
 ): FaceDetectionResult => {
@@ -58,11 +60,13 @@ export const useMediaPipeFaceDetection = (
   const DETECTION_INTERVAL = 100; // ms
   const lastDetectionTimeRef = useRef(performance.now());
 
-  // Gesture detection accumulators
-  const gestureHistoryRef = useRef<GestureDetection[]>([]);
-  const lastGestureTimeRef = useRef(performance.now());
-  const previousNosePositionRef = useRef<{ x: number; y: number } | null>(null);
+  // Gesture detection accumulators per face
+  const previousNosePositionRef = useRef<Record<number, { x: number; y: number }>>({});
+  const gestureHistoryMapRef = useRef<Record<number, GestureDetection[]>>({});
+  const lastGestureTimeMapRef = useRef<Record<number, number>>({});
+  const lastGesturePerFaceRef = useRef<Record<number, 'yes' | 'no' | null>>({});
   const preparingRef = useRef(false);
+  const lastConflictTimeRef = useRef(0);
 
   // Constants
   const REQUIRED_GESTURE_FRAMES = 6;
@@ -94,19 +98,17 @@ export const useMediaPipeFaceDetection = (
   // 2) detectGestureFromLandmarks
   // -------------------------------
   const detectGestureFromLandmarks = useCallback(
-    (landmarks: any[]): GestureDetection | null => {
+    (landmarks: any[], faceId: number): GestureDetection | null => {
       const noseTip = landmarks[4];
       if (!noseTip) return null;
 
       const currentPos = { x: noseTip.x, y: noseTip.y };
-      if (!previousNosePositionRef.current) {
-        previousNosePositionRef.current = currentPos;
-        return null;
-      }
+      const prevPos = previousNosePositionRef.current[faceId];
+      previousNosePositionRef.current[faceId] = currentPos;
+      if (!prevPos) return null;
 
-      const deltaX = Math.abs(currentPos.x - previousNosePositionRef.current.x);
-      const deltaY = Math.abs(currentPos.y - previousNosePositionRef.current.y);
-      previousNosePositionRef.current = currentPos;
+      const deltaX = Math.abs(currentPos.x - prevPos.x);
+      const deltaY = Math.abs(currentPos.y - prevPos.y);
 
       let gesture: 'yes' | 'no' | null = null;
       let confidence = 0;
@@ -133,66 +135,63 @@ export const useMediaPipeFaceDetection = (
   // -------------------------------
   // 3) processGestureHistory
   // -------------------------------
-  const processGestureHistory = useCallback(() => {
-    const len = gestureHistoryRef.current.length;
-    if (len === 0) {
-      if (preparingRef.current) {
+  const processGestureHistory = useCallback(
+    (faceId: number) => {
+      const history = gestureHistoryMapRef.current[faceId] || [];
+      const len = history.length;
+      if (len === 0) return;
+
+      const recent = history.slice(-REQUIRED_GESTURE_FRAMES);
+      const gestures = recent.map(r => r.gesture);
+      const yesCount = gestures.filter(g => g === 'yes').length;
+      const noCount = gestures.filter(g => g === 'no').length;
+      const majority = Math.max(yesCount, noCount);
+
+      if (len < REQUIRED_GESTURE_FRAMES && majority === len && !preparingRef.current) {
+        preparingRef.current = true;
+        setResult(prev => ({ ...prev, isPreparing: true }));
+      }
+
+      const now = performance.now();
+      const lastTime = lastGestureTimeMapRef.current[faceId] || 0;
+
+      if (len >= REQUIRED_GESTURE_FRAMES) {
+        const avgConfidence =
+          recent.reduce((sum, item) => sum + item.confidence, 0) / recent.length;
+        if (
+          now - lastTime > GESTURE_COOLDOWN_MS &&
+          avgConfidence > GESTURE_CONFIDENCE_THRESHOLD
+        ) {
+          if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+            onGestureDetected('yes');
+            lastGestureTimeMapRef.current[faceId] = now;
+            lastGesturePerFaceRef.current[faceId] = 'yes';
+            gestureHistoryMapRef.current[faceId] = [];
+            preparingRef.current = false;
+            setResult(prev => ({ ...prev, isPreparing: false }));
+          } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+            onGestureDetected('no');
+            lastGestureTimeMapRef.current[faceId] = now;
+            lastGesturePerFaceRef.current[faceId] = 'no';
+            gestureHistoryMapRef.current[faceId] = [];
+            preparingRef.current = false;
+            setResult(prev => ({ ...prev, isPreparing: false }));
+          }
+        }
+      }
+
+      if (preparingRef.current && majority !== len) {
         preparingRef.current = false;
         setResult(prev => ({ ...prev, isPreparing: false }));
       }
-      return;
-    }
-
-    const recent = gestureHistoryRef.current.slice(-REQUIRED_GESTURE_FRAMES);
-    const gestures = recent.map(r => r.gesture);
-    const yesCount = gestures.filter(g => g === 'yes').length;
-    const noCount = gestures.filter(g => g === 'no').length;
-    const majority = Math.max(yesCount, noCount);
-
-    // Enter "preparing" state if frames are uniform
-    if (len < REQUIRED_GESTURE_FRAMES && majority === len && !preparingRef.current) {
-      preparingRef.current = true;
-      setResult(prev => ({ ...prev, isPreparing: true }));
-    }
-
-    // Check final confirmation
-    const now = performance.now();
-    const timeSinceLastGesture = now - lastGestureTimeRef.current;
-
-    if (len >= REQUIRED_GESTURE_FRAMES) {
-      const avgConfidence =
-        recent.reduce((sum, item) => sum + item.confidence, 0) / recent.length;
-      if (
-        timeSinceLastGesture > GESTURE_COOLDOWN_MS &&
-        avgConfidence > GESTURE_CONFIDENCE_THRESHOLD
-      ) {
-        if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
-          onGestureDetected('yes');
-          lastGestureTimeRef.current = now;
-          gestureHistoryRef.current = [];
-          preparingRef.current = false;
-          setResult(prev => ({ ...prev, isPreparing: false }));
-        } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
-          onGestureDetected('no');
-          lastGestureTimeRef.current = now;
-          gestureHistoryRef.current = [];
-          preparingRef.current = false;
-          setResult(prev => ({ ...prev, isPreparing: false }));
-        }
-      }
-    }
-
-    // If we were "preparing" but now see conflicting frames
-    if (preparingRef.current && majority !== len) {
-      preparingRef.current = false;
-      setResult(prev => ({ ...prev, isPreparing: false }));
-    }
-  }, [
-    onGestureDetected,
-    REQUIRED_GESTURE_FRAMES,
-    GESTURE_COOLDOWN_MS,
-    GESTURE_CONFIDENCE_THRESHOLD
-  ]);
+    },
+    [
+      onGestureDetected,
+      REQUIRED_GESTURE_FRAMES,
+      GESTURE_COOLDOWN_MS,
+      GESTURE_CONFIDENCE_THRESHOLD
+    ]
+  );
 
   // -------------------------------
   // 4) onResults callback
@@ -219,18 +218,20 @@ export const useMediaPipeFaceDetection = (
 
       if (results.multiFaceLandmarks?.length) {
         const newFaces: FaceData[] = results.multiFaceLandmarks.map((landmarks: any, index: number) => {
-          const gestureResult = detectGestureFromLandmarks(landmarks);
-          if (gestureResult?.gesture) {
-            gestureHistoryRef.current.push(gestureResult);
-            // Limit length
-            const maxSize = REQUIRED_GESTURE_FRAMES * 2;
-            if (gestureHistoryRef.current.length > maxSize) {
-              gestureHistoryRef.current = gestureHistoryRef.current.slice(-maxSize);
+          const gestureResult = detectGestureFromLandmarks(landmarks, index);
+          if (gestureResult) {
+            if (!gestureHistoryMapRef.current[index]) gestureHistoryMapRef.current[index] = [];
+            if (gestureResult.gesture) {
+              gestureHistoryMapRef.current[index].push(gestureResult);
+              const maxSize = REQUIRED_GESTURE_FRAMES * 2;
+              if (gestureHistoryMapRef.current[index].length > maxSize) {
+                gestureHistoryMapRef.current[index] = gestureHistoryMapRef.current[index].slice(-maxSize);
+              }
             }
           }
 
           const rect = computeFaceRect(landmarks, canvas.width, canvas.height);
-          const timeSinceGesture = now - lastGestureTimeRef.current;
+          const timeSinceGesture = now - (lastGestureTimeMapRef.current[index] || 0);
           const isInCooldown = timeSinceGesture < GESTURE_COOLDOWN_MS;
 
           if (drawFaceBoxes) {
@@ -258,6 +259,7 @@ export const useMediaPipeFaceDetection = (
             deltaY: gestureResult?.deltaY || 0,
             nose: { x: landmarks[4].x, y: landmarks[4].y },
             isInCooldown,
+            lastGesture: lastGesturePerFaceRef.current[index] || null,
           };
         });
 
@@ -267,7 +269,36 @@ export const useMediaPipeFaceDetection = (
           isLoading: false,
           error: null
         }));
-        processGestureHistory();
+
+        newFaces.forEach(face => {
+          processGestureHistory(face.id);
+        });
+
+        const yesFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'yes');
+        const noFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'no');
+
+        if (yesFaces.length && noFaces.length) {
+          yesFaces.forEach(yf => {
+            noFaces.forEach(nf => {
+              ctx.save();
+              ctx.strokeStyle = 'cyan';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(yf.rect.x + yf.rect.width / 2, yf.rect.y + yf.rect.height / 2);
+              ctx.lineTo(nf.rect.x + nf.rect.width / 2, nf.rect.y + nf.rect.height / 2);
+              ctx.stroke();
+              ctx.restore();
+            });
+          });
+
+          if (onConflictPair) {
+            const nowTime = performance.now();
+            if (nowTime - lastConflictTimeRef.current > GESTURE_COOLDOWN_MS) {
+              lastConflictTimeRef.current = nowTime;
+              onConflictPair({ yes: yesFaces[0], no: noFaces[0] });
+            }
+          }
+        }
       } else {
         setResult(prev => ({ ...prev, faces: [], isLoading: false }));
       }
@@ -280,6 +311,7 @@ export const useMediaPipeFaceDetection = (
       REQUIRED_GESTURE_FRAMES,
       GESTURE_COOLDOWN_MS,
       drawFaceBoxes,
+      onConflictPair,
     ]
   );
 

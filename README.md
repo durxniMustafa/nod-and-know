@@ -1,73 +1,42 @@
-# Welcome to your Lovable project
+# Nod & Know
 
-## Project info
+Nod & Know is an interactive security awareness demo. It uses your webcam to detect nodding for **yes** and shaking for **no** while you answer short security questions. Votes are stored in your browser and you can join an anonymous chat to discuss each question.
 
-**URL**: https://lovable.dev/projects/f228e5c7-fed5-4c1f-aa65-80a01a592655
+## Getting Started
 
-## How can I edit this code?
+1. Install dependencies:
+   ```sh
+   npm install
+   ```
+2. Start the development server:
+   ```sh
+   npm run dev
+   ```
+   The app runs on <http://localhost:8080> by default.
+3. Build for production:
+   ```sh
+   npm run build
+   ```
+   The production files will be output to the `dist` directory.
 
-There are several ways of editing your application.
+## Code Overview
 
-**Use Lovable**
+- **src/pages/Index.tsx** – main page that rotates through questions, collects votes and shows charts.
+- **src/components/WebcamFeed.tsx** – handles MediaPipe face detection and interprets head gestures.
+- **src/components/VoteChart.tsx** – displays the yes/no vote counts.
+- **src/components/ChatInterface.tsx** – modal chat window driven by a mocked WebSocket service.
+- **src/services/dataService.ts** – stores session data and lightweight analytics in `localStorage`.
+- **src/services/websocketService.ts** – simulates a chat server for anonymous discussion.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f228e5c7-fed5-4c1f-aa65-80a01a592655) and start prompting.
+Everything runs entirely in the browser, so no data is sent to a backend.
 
-Changes made via Lovable will be committed automatically to this repo.
+## Technologies
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
+- React + TypeScript
 - Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- Tailwind CSS and shadcn-ui components
+- MediaPipe for facial gesture detection
 
-## How can I deploy this project?
+## Deployment
 
-Simply open [Lovable](https://lovable.dev/projects/f228e5c7-fed5-4c1f-aa65-80a01a592655) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+After building the project, serve the contents of the `dist` folder with any static hosting provider.

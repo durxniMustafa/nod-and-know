@@ -41,14 +41,15 @@ export const useMediaPipeFaceDetection = (
   const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
   const REQUIRED_GESTURE_FRAMES = 6;
-  const NOD_THRESHOLD = 0.08;
-  const SHAKE_THRESHOLD = 0.12;
+  // Slightly lower thresholds for more sensitive detection
+  const NOD_THRESHOLD = 0.05;
+  const SHAKE_THRESHOLD = 0.06;
 
   const detectGesture = useCallback((landmarks: any) => {
     if (!landmarks || landmarks.length === 0) return null;
 
-    // Use nose tip landmark (index 1) for head movement detection
-    const noseTip = landmarks[1];
+    // Use nose tip landmark (index 4) for head movement detection
+    const noseTip = landmarks[4];
     const currentNosePosition = { x: noseTip.x, y: noseTip.y };
 
     if (previousNosePositionRef.current) {
@@ -59,12 +60,12 @@ export const useMediaPipeFaceDetection = (
       let confidence = 0;
 
       // Detect head shake (horizontal movement)
-      if (deltaX > SHAKE_THRESHOLD && deltaX > deltaY * 1.5) {
+      if (deltaX > SHAKE_THRESHOLD && deltaX > deltaY * 1.2) {
         gesture = 'no';
         confidence = Math.min(deltaX / (SHAKE_THRESHOLD * 2), 1);
       }
       // Detect head nod (vertical movement)
-      else if (deltaY > NOD_THRESHOLD && deltaY > deltaX * 1.5) {
+      else if (deltaY > NOD_THRESHOLD && deltaY > deltaX * 1.2) {
         gesture = 'yes';
         confidence = Math.min(deltaY / (NOD_THRESHOLD * 2), 1);
       }
@@ -179,6 +180,19 @@ export const useMediaPipeFaceDetection = (
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.strokeRect(faceRect.x, faceRect.y, faceRect.width, faceRect.height);
+        ctx.fillStyle = color;
+        ctx.font = '16px sans-serif';
+        ctx.fillText('tracking', faceRect.x, faceRect.y - 6);
+
+        // Draw a small overlay on the nose tip so the user
+        // can see exactly which area is being tracked
+        const noseTipLandmark = landmarks[4];
+        const noseCanvasX = noseTipLandmark.x * canvas.width;
+        const noseCanvasY = noseTipLandmark.y * canvas.height;
+        ctx.beginPath();
+        ctx.arc(noseCanvasX, noseCanvasY, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
 
         // Draw cooldown indicator
         if (isInCooldown) {

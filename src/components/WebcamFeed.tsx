@@ -5,6 +5,7 @@ import { useMediaPipeFaceDetection } from '@/hooks/useMediaPipeFaceDetection';
 interface WebcamFeedProps {
   onGestureDetected: (gesture: 'yes' | 'no') => void;
   onFaceData: (faces: any[], fps: number) => void;
+  onConflictPair?: (pair: { yes: any; no: any }) => void;
   fallbackMode: boolean;
   debugMode?: boolean;
   showOutlines?: boolean;
@@ -19,6 +20,7 @@ interface HeadPose {
 const WebcamFeed: React.FC<WebcamFeedProps> = ({
   onGestureDetected,
   onFaceData,
+  onConflictPair,
   fallbackMode,
   debugMode = false,
   showOutlines = true
@@ -29,11 +31,19 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [headPoseData, setHeadPoseData] = useState<HeadPose | null>(null);
 
+  const handleConflictFromHook = React.useCallback(
+    (pair: { yes: any; no: any }) => {
+      onConflictPair?.(pair);
+    },
+    [onConflictPair]
+  );
+
   // Use our MediaPipe detection hook (enabled = !fallbackMode)
   const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
     videoRef,
     canvasRef,
     onGestureDetected,
+    handleConflictFromHook,
     !fallbackMode,
     showOutlines
   );

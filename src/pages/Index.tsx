@@ -96,6 +96,12 @@ const Index = () => {
     setFps(currentFps);
   }, []);
 
+  const handleConflictPair = useCallback(() => {
+    if (!isDiscussionOpen) {
+      setIsDiscussionOpen(true);
+    }
+  }, [isDiscussionOpen]);
+
   // -----------------------------------------
   // Clear / Export data
   // -----------------------------------------
@@ -173,6 +179,7 @@ const Index = () => {
               <WebcamFeed
                 onGestureDetected={handleGestureDetected}
                 onFaceData={handleFaceData}
+                onConflictPair={handleConflictPair}
                 fallbackMode={fallbackMode}
                 debugMode={debugMode}
               />

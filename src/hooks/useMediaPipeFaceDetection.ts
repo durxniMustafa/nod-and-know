@@ -36,7 +36,8 @@ export const useMediaPipeFaceDetection = (
   videoRef: React.RefObject<HTMLVideoElement>,
   canvasRef: React.RefObject<HTMLCanvasElement>,
   onGestureDetected: (gesture: 'yes' | 'no') => void,
-  enabled: boolean = true
+  enabled: boolean = true,
+  drawFaceBoxes: boolean = true
 ): FaceDetectionResult => {
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
@@ -232,7 +233,20 @@ export const useMediaPipeFaceDetection = (
           const timeSinceGesture = now - lastGestureTimeRef.current;
           const isInCooldown = timeSinceGesture < GESTURE_COOLDOWN_MS;
 
-          // (Optionally: draw bounding boxes, arcs, etc.)
+          if (drawFaceBoxes) {
+            const fade = isInCooldown
+              ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
+              : 1;
+            let color = '128,128,128';
+            if (gestureResult?.gesture === 'yes') color = '0,255,0';
+            else if (gestureResult?.gesture === 'no') color = '255,0,0';
+
+            ctx.save();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = `rgba(${color},${fade})`;
+            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+            ctx.restore();
+          }
 
           return {
             id: index,
@@ -265,6 +279,7 @@ export const useMediaPipeFaceDetection = (
       processGestureHistory,
       REQUIRED_GESTURE_FRAMES,
       GESTURE_COOLDOWN_MS,
+      drawFaceBoxes,
     ]
   );
 

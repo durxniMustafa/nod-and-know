@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +8,10 @@ interface QuestionDisplayProps {
   totalQuestions: number;
 }
 
-const QuestionDisplay: React.FC<QuestionDisplayProps> = ({ 
-  question, 
-  questionIndex, 
-  totalQuestions 
+const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
+  question,
+  questionIndex,
+  totalQuestions
 }) => {
   return (
     <Card className="bg-black/50 border-gray-700 p-6">
@@ -22,13 +21,12 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
           {questionIndex} / {totalQuestions}
         </Badge>
       </div>
-      
+
       <div className="mb-4">
-        <p className="text-gray-300 text-lg leading-relaxed">
-          {question}
-        </p>
+        <p className="text-gray-300 text-lg leading-relaxed">{question}</p>
       </div>
 
+      {/* Example label: "Next question in 15s" */}
       <div className="flex justify-between items-center text-sm text-gray-400">
         <span>Next question in 15s</span>
         <div className="flex gap-2">
@@ -37,9 +35,9 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         </div>
       </div>
 
-      {/* Progress indicator */}
+      {/* Progress bar */}
       <div className="mt-4 w-full bg-gray-700 rounded-full h-1">
-        <div 
+        <div
           className="bg-gradient-to-r from-blue-500 to-purple-500 h-1 rounded-full transition-all duration-300"
           style={{ width: `${(questionIndex / totalQuestions) * 100}%` }}
         ></div>

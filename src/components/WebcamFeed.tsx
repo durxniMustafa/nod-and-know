@@ -7,6 +7,7 @@ interface WebcamFeedProps {
   onFaceData: (faces: any[], fps: number) => void;
   fallbackMode: boolean;
   debugMode?: boolean;
+  showOutlines?: boolean;
 }
 
 interface HeadPose {
@@ -19,7 +20,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   onGestureDetected,
   onFaceData,
   fallbackMode,
-  debugMode = false
+  debugMode = false,
+  showOutlines = true
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,7 +34,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     videoRef,
     canvasRef,
     onGestureDetected,
-    !fallbackMode
+    !fallbackMode,
+    showOutlines
   );
 
   // Clear camera error when we exit fallback

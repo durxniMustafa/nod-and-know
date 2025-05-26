@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { useMediaPipeFaceDetection } from '@/hooks/useMediaPipeFaceDetection';
@@ -7,6 +6,14 @@ interface WebcamFeedProps {
   onGestureDetected: (gesture: 'yes' | 'no') => void;
   onFaceData: (faces: any[], fps: number) => void;
   fallbackMode: boolean;
+}
+
+// Define a type for head pose data for clarity
+interface HeadPose {
+  pitch: number;
+  yaw: number;
+  roll: number;
+  // Add other relevant coordinates if available, e.g., x, y, z
 }
 
 const WebcamFeed: React.FC<WebcamFeedProps> = ({ 
@@ -18,6 +25,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [headPoseData, setHeadPoseData] = useState<HeadPose | null>(null);
 
   // Use the MediaPipe face detection hook
   const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
@@ -30,10 +38,11 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   useEffect(() => {
     const initCamera = async () => {
       try {
+        // LOWERED the resolution from 640x480 down to 480x360
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
-            width: { ideal: 640 },
-            height: { ideal: 480 },
+            width: { ideal: 480 },
+            height: { ideal: 360 },
             frameRate: { ideal: 30 }
           } 
         });
@@ -58,11 +67,17 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         cameraStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [fallbackMode]);
+  }, [fallbackMode, cameraStream]);
 
-  // Report face data to parent
+  // Report face data to parent and update head pose data
   useEffect(() => {
     onFaceData(faces, fps);
+    // Assuming faces[0] contains headPose data like { pitch, yaw, roll }
+    if (faces.length > 0 && faces[0]?.headPose) { 
+      setHeadPoseData(faces[0].headPose as HeadPose);
+    } else {
+      setHeadPoseData(null);
+    }
   }, [faces, fps, onFaceData]);
 
   // Handle canvas sizing
@@ -72,8 +87,9 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
       const canvas = canvasRef.current;
       
       const updateCanvasSize = () => {
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
+        // These widths match the camera feed, but can default to something smaller if needed
+        canvas.width = video.videoWidth || 480;
+        canvas.height = video.videoHeight || 360;
       };
 
       video.addEventListener('loadedmetadata', updateCanvasSize);
@@ -155,11 +171,11 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
       <div className="mt-4 space-y-3">
         {/* Real-time status */}
         {!fallbackMode && (
-          <div className="flex justify-center gap-4 text-sm">
+          <div className="flex justify-center gap-4 text-sm mb-2">
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${faces.length > 0 ? 'bg-green-500' : 'bg-gray-500'}`}></div>
               <span className="text-gray-300">
-                {faces.length} face{faces.length !== 1 ? 's' : ''} detected
+                {faces.length} face{faces.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -168,6 +184,16 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
                 {Math.round(fps)} FPS
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Head Movement Debugger UI */}
+        {!fallbackMode && headPoseData && faces.length > 0 && (
+          <div className="text-center bg-gray-800 p-2 rounded-md mb-3 text-xs text-gray-300">
+            <h4 className="font-semibold mb-1 text-sm text-white">Head Pose (Face 1):</h4>
+            <div>Pitch: {headPoseData.pitch?.toFixed(2) ?? 'N/A'}</div>
+            <div>Yaw: {headPoseData.yaw?.toFixed(2) ?? 'N/A'}</div>
+            <div>Roll: {headPoseData.roll?.toFixed(2) ?? 'N/A'}</div>
           </div>
         )}
 

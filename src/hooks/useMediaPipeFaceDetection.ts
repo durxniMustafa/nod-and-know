@@ -21,6 +21,9 @@ export const useMediaPipeFaceDetection = (
   canvasRef: React.RefObject<HTMLCanvasElement>,
   onGestureDetected: (gesture: 'yes' | 'no') => void
 ) => {
+  // Throttle detection calls to ~10 fps
+  const DETECTION_INTERVAL = 100; // ms
+
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
     fps: 0,
@@ -31,20 +34,28 @@ export const useMediaPipeFaceDetection = (
 
   const faceMeshRef = useRef<FaceMesh | null>(null);
   const cameraRef = useRef<Camera | null>(null);
+
+  // For FPS calculation
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
+
+  // Throttle detection
+  const lastDetectionTimeRef = useRef(0);
+
+  // Gesture detection stuff
   const gestureHistoryRef = useRef<GestureDetection[]>([]);
   const lastGestureTimeRef = useRef(0);
   const previousNosePositionRef = useRef<{ x: number; y: number } | null>(null);
   const preparingRef = useRef(false);
 
+  // Constants for gesture logic
   const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
   const REQUIRED_GESTURE_FRAMES = 6;
-  // Slightly lower thresholds for more sensitive detection
   const NOD_THRESHOLD = 0.05;
   const SHAKE_THRESHOLD = 0.06;
 
+  // -- Helper to detect nod/shake from nose positions
   const detectGesture = useCallback((landmarks: any) => {
     if (!landmarks || landmarks.length === 0) return null;
 
@@ -59,17 +70,18 @@ export const useMediaPipeFaceDetection = (
       let gesture: 'yes' | 'no' | null = null;
       let confidence = 0;
 
-      // Detect head shake (horizontal movement)
+      // Detect head shake (horizontal)
       if (deltaX > SHAKE_THRESHOLD && deltaX > deltaY * 1.2) {
         gesture = 'no';
         confidence = Math.min(deltaX / (SHAKE_THRESHOLD * 2), 1);
       }
-      // Detect head nod (vertical movement)
+      // Detect head nod (vertical)
       else if (deltaY > NOD_THRESHOLD && deltaY > deltaX * 1.2) {
         gesture = 'yes';
         confidence = Math.min(deltaY / (NOD_THRESHOLD * 2), 1);
       }
 
+      // Update the stored position
       previousNosePositionRef.current = currentNosePosition;
 
       if (gesture && confidence > GESTURE_CONFIDENCE_THRESHOLD) {
@@ -82,9 +94,9 @@ export const useMediaPipeFaceDetection = (
     return null;
   }, []);
 
+  // -- Gesture aggregator
   const processGestureHistory = useCallback(() => {
     const len = gestureHistoryRef.current.length;
-
     if (len === 0) {
       if (preparingRef.current) {
         preparingRef.current = false;
@@ -101,11 +113,13 @@ export const useMediaPipeFaceDetection = (
     const now = Date.now();
     const timeSinceLastGesture = now - lastGestureTimeRef.current;
 
+    // If we see a full set of same-gesture frames, switch to "preparing" UI
     if (len < REQUIRED_GESTURE_FRAMES && majority === len && !preparingRef.current) {
       preparingRef.current = true;
       setResult(prev => ({ ...prev, isPreparing: true }));
     }
 
+    // Once we have enough frames to confirm a gesture
     if (len >= REQUIRED_GESTURE_FRAMES) {
       const avgConfidence = recentGestures.reduce((sum, g) => sum + g.confidence, 0) / recentGestures.length;
       if (timeSinceLastGesture > GESTURE_COOLDOWN_MS && avgConfidence > GESTURE_CONFIDENCE_THRESHOLD) {
@@ -125,12 +139,14 @@ export const useMediaPipeFaceDetection = (
       }
     }
 
+    // If we started "preparing" but see conflicting frames, reset
     if (preparingRef.current && majority !== len) {
       preparingRef.current = false;
       setResult(prev => ({ ...prev, isPreparing: false }));
     }
   }, [onGestureDetected]);
 
+  // -- Called every time FaceMesh has results
   const onResults = useCallback((results: any) => {
     if (!canvasRef.current) return;
 
@@ -159,9 +175,10 @@ export const useMediaPipeFaceDetection = (
         
         if (gestureResult) {
           gestureHistoryRef.current.push(gestureResult);
-          // Keep only recent gesture history
-          if (gestureHistoryRef.current.length > REQUIRED_GESTURE_FRAMES * 2) {
-            gestureHistoryRef.current = gestureHistoryRef.current.slice(-REQUIRED_GESTURE_FRAMES);
+          // Keep only recent gesture frames to avoid memory growth
+          const maxSize = REQUIRED_GESTURE_FRAMES * 2;
+          if (gestureHistoryRef.current.length > maxSize) {
+            gestureHistoryRef.current = gestureHistoryRef.current.slice(-maxSize);
           }
         }
 
@@ -170,6 +187,7 @@ export const useMediaPipeFaceDetection = (
         const timeSinceLastGesture = now - lastGestureTimeRef.current;
         const isInCooldown = timeSinceLastGesture < GESTURE_COOLDOWN_MS;
         
+        // Color depends on whether in cooldown or just recognized a gesture
         let color = '#6b7280'; // Default gray
         if (isInCooldown) {
           color = '#fbbf24'; // Yellow during cooldown
@@ -184,8 +202,7 @@ export const useMediaPipeFaceDetection = (
         ctx.font = '16px sans-serif';
         ctx.fillText('tracking', faceRect.x, faceRect.y - 6);
 
-        // Draw a small overlay on the nose tip so the user
-        // can see exactly which area is being tracked
+        // Nose tip overlay
         const noseTipLandmark = landmarks[4];
         const noseCanvasX = noseTipLandmark.x * canvas.width;
         const noseCanvasY = noseTipLandmark.y * canvas.height;
@@ -194,7 +211,7 @@ export const useMediaPipeFaceDetection = (
         ctx.fillStyle = color;
         ctx.fill();
 
-        // Draw cooldown indicator
+        // If in cooldown, draw an arc to indicate time left
         if (isInCooldown) {
           const cooldownProgress = timeSinceLastGesture / GESTURE_COOLDOWN_MS;
           const arcRadius = 20;
@@ -218,10 +235,12 @@ export const useMediaPipeFaceDetection = (
       setResult(prev => ({ ...prev, faces, isLoading: false, error: null }));
       processGestureHistory();
     } else {
+      // No faces
       setResult(prev => ({ ...prev, faces: [], isLoading: false }));
     }
-  }, [detectGesture, processGestureHistory]);
+  }, [detectGesture, processGestureHistory, canvasRef]);
 
+  // -- Helper to get bounding box of face
   const getFaceRect = (landmarks: any, canvasWidth: number, canvasHeight: number) => {
     const xs = landmarks.map((point: any) => point.x * canvasWidth);
     const ys = landmarks.map((point: any) => point.y * canvasHeight);
@@ -239,6 +258,7 @@ export const useMediaPipeFaceDetection = (
     };
   };
 
+  // -- Initialize FaceMesh + Camera
   useEffect(() => {
     const initializeMediaPipe = async () => {
       try {
@@ -258,13 +278,20 @@ export const useMediaPipeFaceDetection = (
 
         if (videoRef.current) {
           const camera = new Camera(videoRef.current, {
+            // Called on every camera frame
             onFrame: async () => {
               if (faceMeshRef.current && videoRef.current) {
-                await faceMeshRef.current.send({ image: videoRef.current });
+                const now = performance.now();
+                // Throttle detection calls
+                if (now - lastDetectionTimeRef.current > DETECTION_INTERVAL) {
+                  lastDetectionTimeRef.current = now;
+                  await faceMeshRef.current.send({ image: videoRef.current });
+                }
               }
             },
-            width: 640,
-            height: 480
+            // Match our reduced resolution
+            width: 480,
+            height: 360
           });
 
           await camera.start();
@@ -288,7 +315,7 @@ export const useMediaPipeFaceDetection = (
         cameraRef.current.stop();
       }
     };
-  }, [onResults]);
+  }, [onResults, videoRef, canvasRef]);
 
   return result;
 };

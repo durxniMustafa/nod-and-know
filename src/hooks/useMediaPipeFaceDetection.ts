@@ -14,12 +14,15 @@ interface FaceDetectionResult {
 interface GestureDetection {
   gesture: 'yes' | 'no' | null;
   confidence: number;
+  deltaX: number;
+  deltaY: number;
 }
 
 export const useMediaPipeFaceDetection = (
   videoRef: React.RefObject<HTMLVideoElement>,
   canvasRef: React.RefObject<HTMLCanvasElement>,
-  onGestureDetected: (gesture: 'yes' | 'no') => void
+  onGestureDetected: (gesture: 'yes' | 'no') => void,
+  enabled: boolean = true
 ) => {
   // Throttle detection calls to ~10 fps
   const DETECTION_INTERVAL = 100; // ms
@@ -84,14 +87,18 @@ export const useMediaPipeFaceDetection = (
       // Update the stored position
       previousNosePositionRef.current = currentNosePosition;
 
+      previousNosePositionRef.current = currentNosePosition;
+
       if (gesture && confidence > GESTURE_CONFIDENCE_THRESHOLD) {
-        return { gesture, confidence };
+        return { gesture, confidence, deltaX, deltaY };
       }
+
+      return { gesture: null, confidence, deltaX, deltaY };
     } else {
       previousNosePositionRef.current = currentNosePosition;
     }
 
-    return null;
+    return { gesture: null, confidence: 0, deltaX: 0, deltaY: 0 };
   }, []);
 
   // -- Gesture aggregator
@@ -172,8 +179,8 @@ export const useMediaPipeFaceDetection = (
       const faces = results.multiFaceLandmarks.map((landmarks: any, index: number) => {
         // Detect gesture for this face
         const gestureResult = detectGesture(landmarks);
-        
-        if (gestureResult) {
+
+        if (gestureResult.gesture) {
           gestureHistoryRef.current.push(gestureResult);
           // Keep only recent gesture frames to avoid memory growth
           const maxSize = REQUIRED_GESTURE_FRAMES * 2;
@@ -228,6 +235,9 @@ export const useMediaPipeFaceDetection = (
           rect: faceRect,
           gesture: gestureResult?.gesture || null,
           confidence: gestureResult?.confidence || 0,
+          deltaX: gestureResult?.deltaX || 0,
+          deltaY: gestureResult?.deltaY || 0,
+          nose: { x: noseTipLandmark.x, y: noseTipLandmark.y },
           isInCooldown
         };
       });
@@ -260,6 +270,19 @@ export const useMediaPipeFaceDetection = (
 
   // -- Initialize FaceMesh + Camera
   useEffect(() => {
+    if (!enabled) {
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+        cameraRef.current = null;
+      }
+      if (faceMeshRef.current) {
+        faceMeshRef.current.close?.();
+        faceMeshRef.current = null;
+      }
+      setResult(prev => ({ ...prev, faces: [], fps: 0 }));
+      return;
+    }
+
     const initializeMediaPipe = async () => {
       try {
         if (faceMeshRef.current) {
@@ -324,7 +347,7 @@ export const useMediaPipeFaceDetection = (
         faceMeshRef.current = null;
       }
     };
-  }, [onResults, videoRef, canvasRef]);
+  }, [onResults, videoRef, canvasRef, enabled]);
 
   return result;
 };

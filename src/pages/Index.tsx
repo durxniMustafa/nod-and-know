@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,83 +29,76 @@ const Index = () => {
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
 
-  // Initialize session and load persisted data
+  // On mount, load session data
   useEffect(() => {
-    // Log session start
     dataService.logAnalyticsEvent('session_start');
-    
-    // Load current question from persistence
     const savedQuestion = dataService.getCurrentQuestion();
     setCurrentQuestion(savedQuestion);
-    
-    // Load votes for current question
+
     const savedVotes = dataService.getVotesForQuestion(savedQuestion);
     setVotes(savedVotes);
   }, []);
 
-  // Rotate questions every 15 seconds
+  // Rotate questions every 15s
   useEffect(() => {
     const interval = setInterval(() => {
       const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
       setCurrentQuestion(nextQuestion);
-      
-      // Persist current question
       dataService.setCurrentQuestion(nextQuestion);
-      
-      // Load votes for new question
+
       const questionVotes = dataService.getVotesForQuestion(nextQuestion);
       setVotes(questionVotes);
-      
-      // Update session stats
+
       setSessionStats(dataService.getSessionStats());
     }, 15000);
 
     return () => clearInterval(interval);
   }, [currentQuestion]);
 
-  // Monitor FPS for fallback mode
-  useEffect(() => {
-    if (fps < 15) {
-      setFallbackMode(true);
-    } else if (fps > 20) {
-      // Only exit fallback mode if FPS is consistently good
-      setFallbackMode(false);
-    }
-  }, [fps]);
+  // Avoid toggling fallback mode too quickly around ~15–20 FPS
+ 
+  
 
-  const handleGestureDetected = (gesture: 'yes' | 'no') => {
+  // -----------------------------------------
+  // 1) Memoized Callback: handleGestureDetected
+  // -----------------------------------------
+  const handleGestureDetected = useCallback((gesture: 'yes' | 'no') => {
     // Add vote to persistence
     const newVotes = dataService.addVote(currentQuestion, gesture);
     setVotes(newVotes);
-    
-    // Log gesture detection
-    dataService.logAnalyticsEvent('gesture_detected', { 
-      questionId: currentQuestion, 
+
+    // Log analytics
+    dataService.logAnalyticsEvent('gesture_detected', {
+      questionId: currentQuestion,
       gesture,
-      fps 
+      fps,
     });
-    
+
     // Update session stats
     setSessionStats(dataService.getSessionStats());
-    
-    // Trigger confetti for minority vote
-    const total = newVotes.yes + newVotes.no;
-    const minorityThreshold = 0.25;
-    const yesPercentage = newVotes.yes / total;
-    const noPercentage = newVotes.no / total;
-    
-    if (total > 3 && (yesPercentage < minorityThreshold || noPercentage < minorityThreshold)) {
-      // Create confetti effect
-      console.log('🎉 Minority opinion detected! Great discussion starter.');
-      // In a real implementation, this could trigger a visual confetti animation
-    }
-  };
 
-  const handleFaceData = (faces: any[], currentFps: number) => {
+    // Simple "minority confetti" logic
+    const total = newVotes.yes + newVotes.no;
+    if (total > 3) {
+      const yesPct = newVotes.yes / total;
+      const noPct = newVotes.no / total;
+      if (yesPct < 0.25 || noPct < 0.25) {
+        console.log('🎉 Minority opinion detected! Great discussion starter.');
+      }
+    }
+  }, [currentQuestion, fps]);
+
+  // -----------------------------------------
+  // 2) Memoized Callback: handleFaceData
+  // -----------------------------------------
+  const handleFaceData = useCallback((faces: any[], currentFps: number) => {
     setDetectedFaces(faces);
     setFps(currentFps);
-  };
+  }, []);
 
+  // -----------------------------------------
+  // Clear / Export data
+  // -----------------------------------------
   const handleClearData = () => {
     if (confirm('Clear all session data? This will reset votes and statistics.')) {
       dataService.clearSessionData();
@@ -127,6 +119,9 @@ const Index = () => {
     URL.revokeObjectURL(url);
   };
 
+  // -----------------------------------------
+  // RENDER
+  // -----------------------------------------
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
       <div className="max-w-7xl mx-auto">
@@ -135,7 +130,9 @@ const Index = () => {
           <h1 className="text-5xl font-bold text-white mb-4 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
             SecureMatch
           </h1>
-          <p className="text-xl text-gray-300 mb-2">Production Gesture-Driven Security Dialogue</p>
+          <p className="text-xl text-gray-300 mb-2">
+            Production Gesture-Driven Security Dialogue
+          </p>
           <div className="flex justify-center gap-4 text-sm text-gray-400 flex-wrap">
             <Badge variant="outline" className="text-green-400 border-green-400">
               FPS: {Math.round(fps)}
@@ -158,7 +155,7 @@ const Index = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Webcam Feed */}
+          {/* Webcam + Controls */}
           <div className="lg:col-span-2">
             <Card className="bg-black/50 border-gray-700 p-6">
               <div className="mb-4">
@@ -166,44 +163,44 @@ const Index = () => {
                   Interactive Feed
                 </h2>
                 <p className="text-gray-300 text-sm">
-                  {fallbackMode ? 
-                    "Scan QR code below to join the discussion" : 
-                    "Nod for YES • Shake for NO"
+                  {fallbackMode
+                    ? "Scan QR code below to join the discussion"
+                    : "Nod for YES • Shake for NO"
                   }
                 </p>
               </div>
-              
+
               <WebcamFeed
                 onGestureDetected={handleGestureDetected}
                 onFaceData={handleFaceData}
                 fallbackMode={fallbackMode}
                 debugMode={debugMode}
               />
-              
-              {/* Development Controls */}
+
+              {/* Dev Controls */}
               <div className="mt-4 flex gap-2 justify-center flex-wrap">
-                <Button 
+                <Button
                   onClick={() => handleGestureDetected('yes')}
                   className="bg-green-600 hover:bg-green-700"
                   size="sm"
                 >
                   Test YES
                 </Button>
-                <Button 
+                <Button
                   onClick={() => handleGestureDetected('no')}
                   className="bg-red-600 hover:bg-red-700"
                   size="sm"
                 >
                   Test NO
                 </Button>
-                <Button 
-                  onClick={() => setFallbackMode(!fallbackMode)}
+                <Button
+                  onClick={() => setFallbackMode(f => !f)}
                   variant="outline"
                   size="sm"
                 >
                   Toggle Fallback
                 </Button>
-                <Button 
+                <Button
                   onClick={handleClearData}
                   variant="outline"
                   size="sm"
@@ -220,7 +217,7 @@ const Index = () => {
                   Export Data
                 </Button>
                 <Button
-                  onClick={() => setDebugMode(!debugMode)}
+                  onClick={() => setDebugMode(d => !d)}
                   variant="outline"
                   size="sm"
                   className="text-purple-400 border-purple-400"
@@ -231,21 +228,17 @@ const Index = () => {
             </Card>
           </div>
 
-          {/* Right Sidebar */}
+          {/* Right: Question + Votes + Discussion */}
           <div className="space-y-6">
-            {/* Current Question */}
-            <QuestionDisplay 
+            <QuestionDisplay
               question={SECURITY_QUESTIONS[currentQuestion]}
               questionIndex={currentQuestion + 1}
               totalQuestions={SECURITY_QUESTIONS.length}
             />
-
-            {/* Vote Chart */}
             <VoteChart votes={votes} />
 
-            {/* Discussion Button */}
             <Card className="bg-black/50 border-gray-700 p-6 text-center">
-              <Button 
+              <Button
                 onClick={() => setIsDiscussionOpen(true)}
                 className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105"
                 size="lg"
@@ -257,7 +250,7 @@ const Index = () => {
               </p>
             </Card>
 
-            {/* Session Statistics */}
+            {/* Session Stats */}
             <Card className="bg-black/50 border-gray-700 p-4">
               <h3 className="text-lg font-semibold text-white mb-3">Session Stats</h3>
               <div className="space-y-2 text-sm">
@@ -271,7 +264,9 @@ const Index = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Chat Opened:</span>
-                  <span className="text-white">{sessionStats.chatOpened ? 'Yes' : 'No'}</span>
+                  <span className="text-white">
+                    {sessionStats.chatOpened ? 'Yes' : 'No'}
+                  </span>
                 </div>
               </div>
             </Card>
@@ -280,7 +275,7 @@ const Index = () => {
 
         {/* Chat Interface Modal */}
         {isDiscussionOpen && (
-          <ChatInterface 
+          <ChatInterface
             question={SECURITY_QUESTIONS[currentQuestion]}
             onClose={() => setIsDiscussionOpen(false)}
           />

@@ -24,14 +24,10 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Store camera errors (if any)
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [headPoseData, setHeadPoseData] = useState<HeadPose | null>(null);
 
-  // ===========================
-  // 1) USE OUR HOOK
-  // ===========================
-  // We pass `enabled = !fallbackMode` so the pipeline only runs outside fallback mode
+  // Use our MediaPipe detection hook (enabled = !fallbackMode)
   const { faces, fps, isLoading, error, isPreparing } = useMediaPipeFaceDetection(
     videoRef,
     canvasRef,
@@ -39,21 +35,16 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     !fallbackMode
   );
 
-  // ===========================
-  // 2) CLEAR CAMERA ERROR ON EXITING FALLBACK
-  // ===========================
+  // Clear camera error when we exit fallback
   useEffect(() => {
     if (!fallbackMode) {
       setCameraError(null);
     }
   }, [fallbackMode]);
 
-  // ===========================
-  // 3) REPORT FACE DATA & HEAD POSE
-  // ===========================
+  // Report face data + track head pose
   useEffect(() => {
     onFaceData(faces, fps);
-
     if (faces.length > 0 && faces[0]?.headPose) {
       setHeadPoseData(faces[0].headPose as HeadPose);
     } else {
@@ -61,16 +52,13 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     }
   }, [faces, fps, onFaceData]);
 
-  // ===========================
-  // 4) RESIZE CANVAS AFTER VIDEO METADATA LOADS
-  // ===========================
+  // Resize canvas after video metadata loads
   useEffect(() => {
     if (canvasRef.current && videoRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
       const updateCanvasSize = () => {
-        // Use the actual video dimensions if available
         canvas.width = video.videoWidth || 480;
         canvas.height = video.videoHeight || 360;
       };
@@ -80,9 +68,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     }
   }, []);
 
-  // ===========================
-  // 5) CAMERA/PIPELINE ERRORS
-  // ===========================
+  // Show any error states
   if (cameraError || error) {
     return (
       <Card className="bg-red-900/20 border-red-700 p-8 text-center">
@@ -102,14 +88,10 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     );
   }
 
-  // ===========================
-  // 6) ACTUAL COMPONENT RENDER
-  // ===========================
+  // Render camera + overlays
   return (
     <div className="relative">
-      {/* CAMERA + CANVAS WRAPPER */}
       <div className="relative bg-black rounded-lg overflow-hidden">
-        {/* LOADING OVERLAY */}
         {(isLoading || !videoRef.current) && (
           <div className="absolute inset-0 bg-black flex items-center justify-center z-10">
             <div className="text-white space-y-2 text-center">
@@ -119,7 +101,6 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {/* VIDEO FEED */}
         <video
           ref={videoRef}
           className="w-full h-auto max-h-96"
@@ -129,14 +110,13 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           style={{ display: fallbackMode ? 'none' : 'block' }}
         />
 
-        {/* FACE DETECTION CANVAS */}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
           style={{ display: fallbackMode ? 'none' : 'block' }}
         />
 
-        {/* DEBUG OVERLAY (SHOWS FACE INFO) */}
+        {/* Debug overlay with face details */}
         {debugMode && !fallbackMode && (
           <div className="absolute top-0 left-0 bg-black/70 text-white text-xs p-2 space-y-1 max-h-60 overflow-y-auto">
             {faces.map(face => (
@@ -146,15 +126,11 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
               >
                 <div>Face {face.id}</div>
                 <div>
-                  Rect: {face.rect.x.toFixed(0)}, {face.rect.y.toFixed(0)},{' '}
+                  Rect: {face.rect.x.toFixed(0)}, {face.rect.y.toFixed(0)}, 
                   {face.rect.width.toFixed(0)}x{face.rect.height.toFixed(0)}
                 </div>
-                <div>
-                  Nose: {face.nose.x.toFixed(2)}, {face.nose.y.toFixed(2)}
-                </div>
-                <div>
-                  Δx: {face.deltaX.toFixed(3)} Δy: {face.deltaY.toFixed(3)}
-                </div>
+                <div>Nose: {face.nose.x.toFixed(2)}, {face.nose.y.toFixed(2)}</div>
+                <div>Δx: {face.deltaX.toFixed(3)} Δy: {face.deltaY.toFixed(3)}</div>
                 {face.gesture && (
                   <div>
                     Gesture: {face.gesture} ({face.confidence.toFixed(2)})
@@ -165,20 +141,17 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {/* FALLBACK OVERLAY */}
         {fallbackMode && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center min-h-[300px]">
             <div className="text-center text-white space-y-4">
               <div className="w-32 h-32 bg-white mb-4 mx-auto rounded-lg flex items-center justify-center">
                 <div className="text-black font-mono text-xs">
-                  {/* Example placeholder pixel pattern */}
+                  {/* Example random pattern */}
                   <div className="grid grid-cols-8 gap-1">
                     {Array.from({ length: 64 }).map((_, i) => (
                       <div
                         key={i}
-                        className={`w-2 h-2 ${
-                          Math.random() > 0.5 ? 'bg-black' : 'bg-white'
-                        }`}
+                        className={`w-2 h-2 ${Math.random() > 0.5 ? 'bg-black' : 'bg-white'}`}
                       />
                     ))}
                   </div>
@@ -193,9 +166,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
         )}
       </div>
 
-      {/* STATUS + INSTRUCTIONS */}
+      {/* Status/Instructions */}
       <div className="mt-4 space-y-3">
-        {/* Face count + FPS */}
         {!fallbackMode && (
           <div className="flex justify-center gap-4 text-sm mb-2">
             <div className="flex items-center gap-2">
@@ -219,7 +191,6 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {/* HEAD POSE DEBUG */}
         {!fallbackMode && headPoseData && faces.length > 0 && (
           <div className="text-center bg-gray-800 p-2 rounded-md mb-3 text-xs text-gray-300">
             <h4 className="font-semibold mb-1 text-sm text-white">Head Pose (Face 1):</h4>
@@ -229,7 +200,6 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {/* GESTURE INSTRUCTIONS */}
         <div className="flex justify-center gap-8 text-base md:text-lg">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-green-500 rounded-full" />
@@ -241,7 +211,6 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         </div>
 
-        {/* PREPARING OVERLAY */}
         {isPreparing && (
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-900/20 border border-blue-600 rounded-lg">
@@ -251,7 +220,6 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {/* COOLDOWN INDICATOR (on any face in cooldown) */}
         {faces.some(face => face.isInCooldown) && (
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-900/20 border border-yellow-600 rounded-lg">

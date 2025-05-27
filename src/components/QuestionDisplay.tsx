@@ -11,31 +11,36 @@ interface QuestionDisplayProps {
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   question,
   questionIndex,
-  totalQuestions
+  totalQuestions,
 }) => {
   return (
-    <Card className="bg-black/50 border-gray-700 p-6">
+    <Card className="bg-black/60 border-gray-700 p-8 shadow-lg">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-white">Current Question</h3>
-        <Badge variant="outline" className="text-blue-400 border-blue-400">
+        <h3 className="text-xl font-semibold text-white text-center flex-1">
+          Current Question
+        </h3>
+        <Badge
+          variant="outline"
+          className="text-blue-400 border-blue-400 ml-4 shrink-0"
+        >
           {questionIndex} / {totalQuestions}
         </Badge>
       </div>
 
-      <div className="mb-4">
-        <p className="text-gray-300 text-lg leading-relaxed">{question}</p>
+      <div className="mb-6">
+        <p className="text-gray-200 text-xl leading-relaxed text-center">
+          {question}
+        </p>
       </div>
 
-      {/* Example label: "Next question in 15s" */}
       <div className="flex justify-between items-center text-sm text-gray-400">
         <span>Next question in 15s</span>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span>Live</span>
         </div>
       </div>
 
-      {/* Progress bar */}
       <div className="mt-4 w-full bg-gray-700 rounded-full h-1">
         <div
           className="bg-gradient-to-r from-blue-500 to-purple-500 h-1 rounded-full transition-all duration-300"

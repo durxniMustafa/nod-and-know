@@ -160,7 +160,13 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <QuestionDisplay
+          question={SECURITY_QUESTIONS[currentQuestion]}
+          questionIndex={currentQuestion + 1}
+          totalQuestions={SECURITY_QUESTIONS.length}
+        />
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Webcam + Controls */}
           <div className="lg:col-span-2">
             <Card className="bg-black/50 border-gray-700 p-6">
@@ -235,13 +241,8 @@ const Index = () => {
             </Card>
           </div>
 
-          {/* Right: Question + Votes + Discussion */}
+          {/* Right: Results + Discussion */}
           <div className="space-y-6">
-            <QuestionDisplay
-              question={SECURITY_QUESTIONS[currentQuestion]}
-              questionIndex={currentQuestion + 1}
-              totalQuestions={SECURITY_QUESTIONS.length}
-            />
             <VoteChart votes={votes} />
 
             <Card className="bg-black/50 border-gray-700 p-6 text-center">

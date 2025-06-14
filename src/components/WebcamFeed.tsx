@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { useMediaPipeFaceDetection } from '@/hooks/useMediaPipeFaceDetection';
 
 interface WebcamFeedProps {
-  onGestureDetected: (gesture: 'yes' | 'no') => void;
+  onGestureDetected: (gesture: 'yes' | 'no', faceId: number) => void;
   onFaceData: (faces: any[], fps: number) => void;
   onConflictPair?: (pair: { yes: any; no: any }) => void;
   fallbackMode: boolean;

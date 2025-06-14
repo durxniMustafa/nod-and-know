@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ const Index = () => {
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
+  const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
   // On mount, load session data
   useEffect(() => {
@@ -62,7 +63,15 @@ const Index = () => {
   // -----------------------------------------
   // 1) Memoized Callback: handleGestureDetected
   // -----------------------------------------
-  const handleGestureDetected = useCallback((gesture: 'yes' | 'no') => {
+  const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
+    if (!faceVotesRef.current[currentQuestion]) {
+      faceVotesRef.current[currentQuestion] = new Set();
+    }
+    if (faceVotesRef.current[currentQuestion].has(faceId)) {
+      return;
+    }
+    faceVotesRef.current[currentQuestion].add(faceId);
+
     // Add vote to persistence
     const newVotes = dataService.addVote(currentQuestion, gesture);
     setVotes(newVotes);
@@ -193,14 +202,14 @@ const Index = () => {
               {/* Dev Controls */}
               <div className="mt-4 flex gap-2 justify-center flex-wrap">
                 <Button
-                  onClick={() => handleGestureDetected('yes')}
+                  onClick={() => handleGestureDetected('yes', -1)}
                   className="bg-green-600 hover:bg-green-700"
                   size="sm"
                 >
                   Test YES
                 </Button>
                 <Button
-                  onClick={() => handleGestureDetected('no')}
+                  onClick={() => handleGestureDetected('no', -1)}
                   className="bg-red-600 hover:bg-red-700"
                   size="sm"
                 >

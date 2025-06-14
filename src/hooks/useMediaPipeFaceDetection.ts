@@ -36,7 +36,7 @@ interface FaceDetectionResult {
 export const useMediaPipeFaceDetection = (
   videoRef: React.RefObject<HTMLVideoElement>,
   canvasRef: React.RefObject<HTMLCanvasElement>,
-  onGestureDetected: (gesture: 'yes' | 'no') => void,
+  onGestureDetected: (gesture: 'yes' | 'no', faceId: number) => void,
   onConflictPair?: (pair: { yes: FaceData; no: FaceData }) => void,
   enabled: boolean = true,
   drawFaceBoxes: boolean = true
@@ -163,14 +163,14 @@ export const useMediaPipeFaceDetection = (
           avgConfidence > GESTURE_CONFIDENCE_THRESHOLD
         ) {
           if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
-            onGestureDetected('yes');
+            onGestureDetected('yes', faceId);
             lastGestureTimeMapRef.current[faceId] = now;
             lastGesturePerFaceRef.current[faceId] = 'yes';
             gestureHistoryMapRef.current[faceId] = [];
             preparingRef.current = false;
             setResult(prev => ({ ...prev, isPreparing: false }));
           } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
-            onGestureDetected('no');
+            onGestureDetected('no', faceId);
             lastGestureTimeMapRef.current[faceId] = now;
             lastGesturePerFaceRef.current[faceId] = 'no';
             gestureHistoryMapRef.current[faceId] = [];
@@ -239,8 +239,9 @@ export const useMediaPipeFaceDetection = (
               ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
               : 1;
             let color = '128,128,128';
-            if (gestureResult?.gesture === 'yes') color = '0,255,0';
-            else if (gestureResult?.gesture === 'no') color = '255,0,0';
+            const persistentGesture = lastGesturePerFaceRef.current[index];
+            if (persistentGesture === 'yes') color = '0,255,0';
+            else if (persistentGesture === 'no') color = '255,0,0';
 
             ctx.save();
             ctx.lineWidth = 3;

@@ -1,6 +1,4 @@
 import pymupdf
-from sentence_transformers import SentenceTransformer
-import chromadb
 from pathlib import Path
 
 # returns all file paths that has .pdf as extension in the specified directory
@@ -24,27 +22,6 @@ for pdf in pdf_files:
             meta = doc.metadata # save metadata
             chunks = chunk_text(text) # safe chunks
 
-            
 
-#2. Step using all-MiniLM-L6-v2: covert text to vectors
-model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-#loop to go though chunks
-embeddings = model.encode(
-    chunks,
-    batch_size=16,
-    show_progress_bar=True
-)
 
-print(embeddings)
 
-#3. collect vetors in Vector Databse
-
-chroma_client = chromadb.Client()
-
-#Create a collection
-collection = chroma_client.create_collection(name="my_collection")
-collection.add(
-    documents=chunks, # readable text
-    embeddings=embeddings.tolist(), #vector data
-    ids=[f"chunk_{i}" for i in range(len(chunks))] #unique keys
-)

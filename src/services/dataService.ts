@@ -13,7 +13,7 @@ interface SessionData {
 }
 
 interface AnalyticsEvent {
-  type: 'vote' | 'gesture_detected' | 'chat_opened' | 'session_start';
+  type: 'vote' | 'gesture_detected' | 'chat_opened' | 'session_start' | 'mobile_user_joined';
   timestamp: number;
   data: Record<string, any>;
 }

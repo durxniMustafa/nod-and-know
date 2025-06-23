@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, Send, Users, Shield, Zap, MessageCircle } from 'lucide-react';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 // Mock services since we can't import external ones
 const mockWebsocketService = {
@@ -35,6 +36,11 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
+
+  const { roomId } = useParams();
+  const [searchParams] = useSearchParams();
+  const topic = searchParams.get('topic');
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);

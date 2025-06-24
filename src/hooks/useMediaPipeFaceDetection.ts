@@ -39,7 +39,8 @@ export const useMediaPipeFaceDetection = (
   onGestureDetected: (gesture: 'yes' | 'no', faceId: number) => void,
   onConflictPair?: (pair: { yes: FaceData; no: FaceData }) => void,
   enabled: boolean = true,
-  drawFaceBoxes: boolean = true
+  drawFaceBoxes: boolean = true,
+  questionId?: number
 ): FaceDetectionResult => {
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
@@ -67,6 +68,16 @@ export const useMediaPipeFaceDetection = (
   const lastGesturePerFaceRef = useRef<Record<number, 'yes' | 'no' | null>>({});
   const preparingRef = useRef(false);
   const lastConflictTimeRef = useRef(0);
+
+  // Reset gesture history when question changes
+  useEffect(() => {
+    previousNosePositionRef.current = {};
+    gestureHistoryMapRef.current = {};
+    lastGestureTimeMapRef.current = {};
+    lastGesturePerFaceRef.current = {};
+    preparingRef.current = false;
+    lastConflictTimeRef.current = 0;
+  }, [questionId]);
 
   // Constants
   const REQUIRED_GESTURE_FRAMES = 6;

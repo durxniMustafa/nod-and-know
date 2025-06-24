@@ -7,6 +7,8 @@ import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
 import { dataService } from '@/services/dataService';
+import HelpDialog from '@/components/HelpDialog';
+import { toast } from '@/components/ui/sonner';
 
 const SECURITY_QUESTIONS = [
   "Do you reuse the same password across multiple accounts?",
@@ -28,6 +30,7 @@ const Index = () => {
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
   // On mount, load session data
@@ -51,7 +54,7 @@ const Index = () => {
       setVotes(questionVotes);
 
       setSessionStats(dataService.getSessionStats());
-    }, 15000);
+    }, 45000);
 
     return () => clearInterval(interval);
   }, [currentQuestion]);
@@ -106,6 +109,7 @@ const Index = () => {
   }, []);
 
   const handleConflictPair = useCallback(() => {
+    toast('Matched with an opposite viewpoint! Join the discussion.');
     if (!isDiscussionOpen) {
       setIsDiscussionOpen(true);
     }
@@ -161,13 +165,18 @@ const Index = () => {
             <Badge variant="outline" className="text-yellow-400 border-yellow-400">
               Session: {Math.round(sessionStats.sessionDuration / 1000 / 60)}m
             </Badge>
-            {fallbackMode && (
-              <Badge variant="destructive">
-                Fallback Mode
-              </Badge>
-            )}
-          </div>
+          {fallbackMode && (
+            <Badge variant="destructive">
+              Fallback Mode
+            </Badge>
+          )}
         </div>
+        <div className="mt-4">
+          <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
+            Help
+          </Button>
+        </div>
+      </div>
 
         <QuestionDisplay
           question={SECURITY_QUESTIONS[currentQuestion]}
@@ -297,6 +306,7 @@ const Index = () => {
             onClose={() => setIsDiscussionOpen(false)}
           />
         )}
+        <HelpDialog open={isHelpOpen} onOpenChange={setIsHelpOpen} />
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ interface VoteData {
   yes: number;
   no: number;
   timestamp: number;
+  voters: string[];
 }
 
 interface SessionData {
@@ -39,6 +40,7 @@ class DataService {
   private readonly VOTE_PERSISTENCE_KEY = 'securematch_votes';
   private readonly GOALS_KEY = 'securematch_goals';
   private readonly LEADERBOARD_KEY = 'securematch_leaderboard';
+  private readonly USER_ID_KEY = 'securematch_user_id';
 
   // Session Management
   getSessionData(): SessionData {
@@ -66,6 +68,15 @@ class DataService {
     } catch (error) {
       console.error('Failed to save session data:', error);
     }
+  }
+
+  getUserId(): string {
+    let id = localStorage.getItem(this.USER_ID_KEY);
+    if (!id) {
+      id = 'user_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem(this.USER_ID_KEY, id);
+    }
+    return id;
   }
 
   // Goal Management
@@ -163,25 +174,38 @@ class DataService {
 
   addVote(questionId: number, vote: 'yes' | 'no'): { yes: number; no: number } {
     const sessionData = this.getSessionData();
-    
+    const userId = this.getUserId();
+
     if (!sessionData.votes[questionId]) {
       sessionData.votes[questionId] = {
         questionId,
         yes: 0,
         no: 0,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        voters: []
       };
     }
 
-    sessionData.votes[questionId][vote]++;
+    const voteData = sessionData.votes[questionId];
+
+    if (!voteData.voters) {
+      voteData.voters = [];
+    }
+
+    if (voteData.voters.includes(userId)) {
+      return { yes: voteData.yes, no: voteData.no };
+    }
+
+    voteData.voters.push(userId);
+    voteData[vote]++;
     sessionData.totalInteractions++;
-    
+
     this.saveSessionData(sessionData);
     this.logAnalyticsEvent('vote', { questionId, vote });
 
     return {
-      yes: sessionData.votes[questionId].yes,
-      no: sessionData.votes[questionId].no
+      yes: voteData.yes,
+      no: voteData.no
     };
   }
 

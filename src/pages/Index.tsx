@@ -22,6 +22,41 @@ const SECURITY_QUESTIONS = [
   "Would you share your login credentials with a close friend?"
 ];
 
+const ANSWER_EXPLANATIONS = [
+  {
+    yes: "using the same password means a breach puts all accounts at risk.",
+    no: "unique passwords protect each account individually.",
+  },
+  {
+    yes: "2FA provides an extra layer of security against stolen passwords.",
+    no: "without 2FA a password alone can grant access to your email.",
+  },
+  {
+    yes: "fingerprints add convenient biometric protection to your device.",
+    no: "not using biometrics can make unlocking slower and less secure.",
+  },
+  {
+    yes: "links in unexpected emails could lead to phishing sites.",
+    no: "clicking could expose you to scams or malware.",
+  },
+  {
+    yes: "updates patch security vulnerabilities promptly.",
+    no: "ignoring updates leaves known flaws exploitable.",
+  },
+  {
+    yes: "public WiFi is often insecure and can be monitored.",
+    no: "using it for banking risks exposing your credentials.",
+  },
+  {
+    yes: "backups safeguard your data from loss or ransomware.",
+    no: "without backups you might lose important files forever.",
+  },
+  {
+    yes: "sharing credentials exposes your accounts to misuse.",
+    no: "keeping them private maintains your control and security.",
+  },
+];
+
 const QUESTION_DURATION_MS = 45000;
 
 const Index = () => {
@@ -35,6 +70,8 @@ const Index = () => {
   const [timeRemaining, setTimeRemaining] = useState(QUESTION_DURATION_MS / 1000);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [inAnswerCooldown, setInAnswerCooldown] = useState(false);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -65,6 +102,14 @@ const Index = () => {
     }, 45000);
 
     return () => clearInterval(interval);
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
+    setInAnswerCooldown(false);
   }, [currentQuestion]);
 
   // Countdown timer for current question
@@ -126,8 +171,18 @@ const Index = () => {
         toast('Minority viewpoint detected! 🎉 This creates interesting discussions.');
       }
     }
-    
+
     console.log(`Vote recorded: ${gesture.toUpperCase()} | Current totals - Yes: ${newVotes.yes}, No: ${newVotes.no}`);
+
+    if (!inAnswerCooldown) {
+      setInAnswerCooldown(true);
+      const explanation = ANSWER_EXPLANATIONS[currentQuestion][gesture];
+      toast(`${gesture === 'yes' ? 'Yes' : 'No'} because ${explanation}`);
+      cooldownTimerRef.current = setTimeout(() => {
+        toast('Scan the QR code below for the next question.');
+        setInAnswerCooldown(false);
+      }, 20000);
+    }
   }, [currentQuestion, fps]);
 
   // -----------------------------------------
@@ -138,13 +193,15 @@ const Index = () => {
     setFps(currentFps);
   }, []);
 
-  const handleConflictPair = useCallback(() => {
-    console.log('Conflict pair detected - opening discussion');
-    toast('Matched with an opposite viewpoint! Join the discussion.');
-    if (!isDiscussionOpen) {
-      setIsDiscussionOpen(true);
-    }
-  }, [isDiscussionOpen]);
+  const handleConflictPair = useCallback(
+    (pair: { yes: any; no: any }) => {
+      console.log(
+        `Conflict pair detected between Face ${pair.yes.id} and Face ${pair.no.id}`
+      );
+      toast(`Face ${pair.yes.id} and Face ${pair.no.id} are matched!`);
+    },
+    []
+  );
 
   // -----------------------------------------
   // Clear / Export data

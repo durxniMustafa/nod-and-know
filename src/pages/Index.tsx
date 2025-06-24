@@ -206,6 +206,7 @@ const Index = () => {
                 onConflictPair={handleConflictPair}
                 fallbackMode={fallbackMode}
                 debugMode={debugMode}
+                questionId={currentQuestion}
               />
 
               {/* Dev Controls */}

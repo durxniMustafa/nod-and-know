@@ -9,6 +9,8 @@ interface WebcamFeedProps {
   fallbackMode: boolean;
   debugMode?: boolean;
   showOutlines?: boolean;
+  /** Current question index used to reset overlay colors */
+  questionId: number;
 }
 
 interface HeadPose {
@@ -23,7 +25,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   onConflictPair,
   fallbackMode,
   debugMode = false,
-  showOutlines = true
+  showOutlines = true,
+  questionId
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,7 +48,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     onGestureDetected,
     handleConflictFromHook,
     !fallbackMode,
-    showOutlines
+    showOutlines,
+    questionId
   );
 
   // Clear camera error when we exit fallback

@@ -12,14 +12,38 @@ import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
 
 const SECURITY_QUESTIONS = [
-  "Do you reuse the same password across multiple accounts?",
-  "Have you enabled two-factor authentication on your main email?",
-  "Do you use your fingerprint to unlock your phone?",
-  "Would you click a link in an unexpected email from your bank?",
-  "Do you regularly update your software when prompted?",
-  "Would you connect to free public WiFi for online banking?",
-  "Do you backup your important files regularly?",
-  "Would you share your login credentials with a close friend?"
+  {
+    question: "Do you reuse the same password across multiple accounts?",
+    answer: "No",
+  },
+  {
+    question: "Have you enabled two-factor authentication on your main email?",
+    answer: "Yes",
+  },
+  {
+    question: "Do you use your fingerprint to unlock your phone?",
+    answer: "Yes",
+  },
+  {
+    question: "Would you click a link in an unexpected email from your bank?",
+    answer: "No",
+  },
+  {
+    question: "Do you regularly update your software when prompted?",
+    answer: "Yes",
+  },
+  {
+    question: "Would you connect to free public WiFi for online banking?",
+    answer: "No",
+  },
+  {
+    question: "Do you backup your important files regularly?",
+    answer: "Yes",
+  },
+  {
+    question: "Would you share your login credentials with a close friend?",
+    answer: "No",
+  },
 ];
 
 const QUESTION_DURATION_MS = 45000;
@@ -125,12 +149,15 @@ const Index = () => {
     setFps(currentFps);
   }, []);
 
-  const handleConflictPair = useCallback(() => {
-    toast('Matched with an opposite viewpoint! Join the discussion.');
-    if (!isDiscussionOpen) {
-      setIsDiscussionOpen(true);
-    }
-  }, [isDiscussionOpen]);
+  const handleConflictPair = useCallback(
+    (pair: { yes: any; no: any }) => {
+      toast(`Face ${pair.yes.id} and Face ${pair.no.id} matched`);
+      if (!isDiscussionOpen) {
+        setIsDiscussionOpen(true);
+      }
+    },
+    [isDiscussionOpen]
+  );
 
   // -----------------------------------------
   // Clear / Export data
@@ -199,7 +226,8 @@ const Index = () => {
       </div>
 
         <QuestionDisplay
-          question={SECURITY_QUESTIONS[currentQuestion]}
+          question={SECURITY_QUESTIONS[currentQuestion].question}
+          answer={SECURITY_QUESTIONS[currentQuestion].answer}
           questionIndex={currentQuestion + 1}
           totalQuestions={SECURITY_QUESTIONS.length}
           timeRemaining={timeRemaining}
@@ -325,7 +353,7 @@ const Index = () => {
         {/* Chat Interface Modal */}
         {isDiscussionOpen && (
           <ChatInterface
-            question={SECURITY_QUESTIONS[currentQuestion]}
+            question={SECURITY_QUESTIONS[currentQuestion].question}
             onClose={() => setIsDiscussionOpen(false)}
           />
         )}

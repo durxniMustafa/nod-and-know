@@ -82,6 +82,7 @@ export const useMediaPipeFaceDetection = (
   // Constants
   const REQUIRED_GESTURE_FRAMES = 6;
   const GESTURE_COOLDOWN_MS = 4000;
+  const CONFLICT_COOLDOWN_MS = 30000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
   const NOD_THRESHOLD = 0.05;
   const SHAKE_THRESHOLD = 0.06;
@@ -305,7 +306,7 @@ export const useMediaPipeFaceDetection = (
 
           if (onConflictPair) {
             const nowTime = performance.now();
-            if (nowTime - lastConflictTimeRef.current > GESTURE_COOLDOWN_MS) {
+            if (nowTime - lastConflictTimeRef.current > CONFLICT_COOLDOWN_MS) {
               lastConflictTimeRef.current = nowTime;
               onConflictPair({ yes: yesFaces[0], no: noFaces[0] });
             }

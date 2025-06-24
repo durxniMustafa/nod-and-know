@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 
 interface QuestionDisplayProps {
   question: string;
+  answer: string;
   questionIndex: number;
   totalQuestions: number;
   timeRemaining: number;
@@ -12,6 +13,7 @@ interface QuestionDisplayProps {
 
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   question,
+  answer,
   questionIndex,
   totalQuestions,
   timeRemaining,
@@ -35,6 +37,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         <p className="text-gray-200 text-xl leading-relaxed text-center">
           {question}
         </p>
+        <p className="text-sm text-gray-400 mt-2 text-center">Recommended answer: {answer}</p>
       </div>
 
       <div className="flex justify-between items-center text-sm text-gray-400">

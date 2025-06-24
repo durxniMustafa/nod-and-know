@@ -8,6 +8,7 @@ import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
+import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
 
 const SECURITY_QUESTIONS = [
@@ -187,10 +188,13 @@ const Index = () => {
             </Badge>
           )}
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex gap-2 justify-center">
           <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
             Help
           </Button>
+          <Link to="/stats">
+            <Button variant="outline" size="sm">Stats</Button>
+          </Link>
         </div>
       </div>
 

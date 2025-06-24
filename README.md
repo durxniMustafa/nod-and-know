@@ -13,6 +13,7 @@ Nod & Know is an interactive security awareness demo. It uses your webcam to det
    npm run dev
    ```
    The app runs on <http://localhost:8080> by default.
+   You can view aggregated session statistics at <http://localhost:8080/stats> while the server is running.
 3. Build for production:
    ```sh
    npm run build
@@ -27,6 +28,7 @@ Nod & Know is an interactive security awareness demo. It uses your webcam to det
 - **src/components/ChatInterface.tsx** – modal chat window driven by a mocked WebSocket service.
 - **src/services/dataService.ts** – stores session data and lightweight analytics in `localStorage`.
 - **src/services/websocketService.ts** – simulates a chat server for anonymous discussion.
+- **src/pages/Stats.tsx** – visualizes anonymous event logs and vote data.
 
 Everything runs entirely in the browser, so no data is sent to a backend.
 

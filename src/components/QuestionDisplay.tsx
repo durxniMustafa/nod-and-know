@@ -34,7 +34,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
       </div>
 
       <div className="flex justify-between items-center text-sm text-gray-400">
-        <span>Next question in 15s</span>
+        <span>Next question in 45s</span>
         <div className="flex gap-2 items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span>Live</span>

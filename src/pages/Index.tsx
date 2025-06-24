@@ -21,6 +21,8 @@ const SECURITY_QUESTIONS = [
   "Would you share your login credentials with a close friend?"
 ];
 
+const QUESTION_DURATION_MS = 45000;
+
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [votes, setVotes] = useState({ yes: 0, no: 0 });
@@ -29,6 +31,7 @@ const Index = () => {
   const [debugMode, setDebugMode] = useState(false);
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
+  const [timeRemaining, setTimeRemaining] = useState(QUESTION_DURATION_MS / 1000);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -43,7 +46,7 @@ const Index = () => {
     setVotes(savedVotes);
   }, []);
 
-  // Rotate questions every 15s
+  // Rotate questions every 45s
   useEffect(() => {
     const interval = setInterval(() => {
       const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
@@ -57,6 +60,19 @@ const Index = () => {
     }, 45000);
 
     return () => clearInterval(interval);
+  }, [currentQuestion]);
+
+  // Countdown timer for current question
+  useEffect(() => {
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const remaining = Math.max(0, QUESTION_DURATION_MS - elapsed);
+      setTimeRemaining(Math.ceil(remaining / 1000));
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
   }, [currentQuestion]);
 
   // Avoid toggling fallback mode too quickly around ~15–20 FPS
@@ -182,6 +198,8 @@ const Index = () => {
           question={SECURITY_QUESTIONS[currentQuestion]}
           questionIndex={currentQuestion + 1}
           totalQuestions={SECURITY_QUESTIONS.length}
+          timeRemaining={timeRemaining}
+          questionDuration={QUESTION_DURATION_MS / 1000}
         />
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">

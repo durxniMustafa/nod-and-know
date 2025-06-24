@@ -6,12 +6,16 @@ interface QuestionDisplayProps {
   question: string;
   questionIndex: number;
   totalQuestions: number;
+  timeRemaining: number;
+  questionDuration: number;
 }
 
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   question,
   questionIndex,
   totalQuestions,
+  timeRemaining,
+  questionDuration,
 }) => {
   return (
     <Card className="bg-black/60 border-gray-700 p-8 shadow-lg">
@@ -34,11 +38,17 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
       </div>
 
       <div className="flex justify-between items-center text-sm text-gray-400">
-        <span>Next question in 45s</span>
+        <span>Next question in {timeRemaining}s</span>
         <div className="flex gap-2 items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span>Live</span>
         </div>
+      </div>
+      <div className="mt-2 w-full bg-gray-700 rounded-full h-1">
+        <div
+          className="bg-gradient-to-r from-green-500 to-blue-500 h-1 rounded-full transition-all duration-1000"
+          style={{ width: `${((questionDuration - timeRemaining) / questionDuration) * 100}%` }}
+        ></div>
       </div>
 
       <div className="mt-4 w-full bg-gray-700 rounded-full h-1">

@@ -39,7 +39,8 @@ export const useMediaPipeFaceDetection = (
   onGestureDetected: (gesture: 'yes' | 'no', faceId: number) => void,
   onConflictPair?: (pair: { yes: FaceData; no: FaceData }) => void,
   enabled: boolean = true,
-  drawFaceBoxes: boolean = true
+  drawFaceBoxes: boolean = true,
+  resetTrigger?: number
 ): FaceDetectionResult => {
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
@@ -74,6 +75,13 @@ export const useMediaPipeFaceDetection = (
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
   const NOD_THRESHOLD = 0.05;
   const SHAKE_THRESHOLD = 0.06;
+
+  // Reset gesture overlays when the resetTrigger changes
+  useEffect(() => {
+    lastGesturePerFaceRef.current = {};
+    lastGestureTimeMapRef.current = {};
+    gestureHistoryMapRef.current = {};
+  }, [resetTrigger]);
 
   // -------------------------------
   // 1) computeFaceRect Helper

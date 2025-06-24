@@ -30,6 +30,13 @@ interface FaceDetectionResult {
   isPreparing: boolean;
 }
 
+interface TrackedFace {
+  id: number;
+  centerX: number;
+  centerY: number;
+  lastSeen: number;
+}
+
 /**
  * Hook to manage MediaPipe FaceMesh detection & nod/shake gesture recognition.
  */
@@ -61,6 +68,12 @@ export const useMediaPipeFaceDetection = (
   const DETECTION_INTERVAL = 100; // ms
   const lastDetectionTimeRef = useRef(performance.now());
 
+  // Face tracking for stable IDs
+  const trackedFacesRef = useRef<TrackedFace[]>([]);
+  const nextFaceIdRef = useRef(1);
+  const FACE_TRACKING_THRESHOLD = 100; // pixels
+  const FACE_TIMEOUT_MS = 2000; // Remove faces not seen for 2 seconds
+
   // Gesture detection accumulators per face
   const previousNosePositionRef = useRef<Record<number, { x: number; y: number }>>({});
   const gestureHistoryMapRef = useRef<Record<number, GestureDetection[]>>({});
@@ -77,6 +90,9 @@ export const useMediaPipeFaceDetection = (
     lastGesturePerFaceRef.current = {};
     preparingRef.current = false;
     lastConflictTimeRef.current = 0;
+    // Also reset face tracking
+    trackedFacesRef.current = [];
+    nextFaceIdRef.current = 1;
   }, [questionId]);
 
   // Constants
@@ -85,6 +101,53 @@ export const useMediaPipeFaceDetection = (
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
   const NOD_THRESHOLD = 0.05;
   const SHAKE_THRESHOLD = 0.06;
+
+  // -------------------------------
+  // Face Tracking Functions
+  // -------------------------------
+  const computeFaceCenter = useCallback((landmarks: any[], width: number, height: number) => {
+    const xs = landmarks.map((pt: any) => pt.x * width);
+    const ys = landmarks.map((pt: any) => pt.y * height);
+    const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+    return { centerX, centerY };
+  }, []);
+
+  const getStableFaceId = useCallback((landmarks: any[], width: number, height: number): number => {
+    const { centerX, centerY } = computeFaceCenter(landmarks, width, height);
+    const now = performance.now();
+
+    // Clean up old faces that haven't been seen recently
+    trackedFacesRef.current = trackedFacesRef.current.filter(face => 
+      now - face.lastSeen < FACE_TIMEOUT_MS
+    );
+
+    // Try to match with existing tracked face
+    for (const trackedFace of trackedFacesRef.current) {
+      const distance = Math.sqrt(
+        Math.pow(centerX - trackedFace.centerX, 2) + 
+        Math.pow(centerY - trackedFace.centerY, 2)
+      );
+
+      if (distance < FACE_TRACKING_THRESHOLD) {
+        // Update tracked face position and timestamp
+        trackedFace.centerX = centerX;
+        trackedFace.centerY = centerY;
+        trackedFace.lastSeen = now;
+        return trackedFace.id;
+      }
+    }
+
+    // No match found, create new tracked face
+    const newFace: TrackedFace = {
+      id: nextFaceIdRef.current++,
+      centerX,
+      centerY,
+      lastSeen: now
+    };
+    trackedFacesRef.current.push(newFace);
+    return newFace.id;
+  }, [computeFaceCenter, FACE_TRACKING_THRESHOLD, FACE_TIMEOUT_MS]);
 
   // -------------------------------
   // 1) computeFaceRect Helper
@@ -140,7 +203,7 @@ export const useMediaPipeFaceDetection = (
       }
       return { gesture: null, confidence, deltaX, deltaY };
     },
-    []
+    [NOD_THRESHOLD, SHAKE_THRESHOLD, GESTURE_CONFIDENCE_THRESHOLD]
   );
 
   // -------------------------------
@@ -228,41 +291,52 @@ export const useMediaPipeFaceDetection = (
       }
 
       if (results.multiFaceLandmarks?.length) {
-        const newFaces: FaceData[] = results.multiFaceLandmarks.map((landmarks: any, index: number) => {
-          const gestureResult = detectGestureFromLandmarks(landmarks, index);
+        const newFaces: FaceData[] = results.multiFaceLandmarks.map((landmarks: any) => {
+          // Get stable face ID
+          const faceId = getStableFaceId(landmarks, canvas.width, canvas.height);
+          
+          const gestureResult = detectGestureFromLandmarks(landmarks, faceId);
           if (gestureResult) {
-            if (!gestureHistoryMapRef.current[index]) gestureHistoryMapRef.current[index] = [];
+            if (!gestureHistoryMapRef.current[faceId]) gestureHistoryMapRef.current[faceId] = [];
             if (gestureResult.gesture) {
-              gestureHistoryMapRef.current[index].push(gestureResult);
+              gestureHistoryMapRef.current[faceId].push(gestureResult);
               const maxSize = REQUIRED_GESTURE_FRAMES * 2;
-              if (gestureHistoryMapRef.current[index].length > maxSize) {
-                gestureHistoryMapRef.current[index] = gestureHistoryMapRef.current[index].slice(-maxSize);
+              if (gestureHistoryMapRef.current[faceId].length > maxSize) {
+                gestureHistoryMapRef.current[faceId] = gestureHistoryMapRef.current[faceId].slice(-maxSize);
               }
             }
           }
 
           const rect = computeFaceRect(landmarks, canvas.width, canvas.height);
-          const timeSinceGesture = now - (lastGestureTimeMapRef.current[index] || 0);
+          const timeSinceGesture = now - (lastGestureTimeMapRef.current[faceId] || 0);
           const isInCooldown = timeSinceGesture < GESTURE_COOLDOWN_MS;
 
           if (drawFaceBoxes) {
             const fade = isInCooldown
               ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
               : 1;
-            let color = '128,128,128';
-            const persistentGesture = lastGesturePerFaceRef.current[index];
-            if (persistentGesture === 'yes') color = '0,255,0';
-            else if (persistentGesture === 'no') color = '255,0,0';
+            
+            // Get color based on this specific face's last gesture
+            let color = '128,128,128'; // Default gray
+            const persistentGesture = lastGesturePerFaceRef.current[faceId];
+            if (persistentGesture === 'yes') color = '0,255,0'; // Green for yes
+            else if (persistentGesture === 'no') color = '255,0,0'; // Red for no
 
             ctx.save();
             ctx.lineWidth = 3;
             ctx.strokeStyle = `rgba(${color},${fade})`;
             ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+            
+            // Add face ID label for debugging
+            ctx.fillStyle = `rgba(${color},${fade})`;
+            ctx.font = '16px Arial';
+            ctx.fillText(`Face ${faceId}`, rect.x, rect.y - 5);
+            
             ctx.restore();
           }
 
           return {
-            id: index,
+            id: faceId,
             landmarks,
             rect,
             gesture: gestureResult?.gesture || null,
@@ -271,7 +345,7 @@ export const useMediaPipeFaceDetection = (
             deltaY: gestureResult?.deltaY || 0,
             nose: { x: landmarks[4].x, y: landmarks[4].y },
             isInCooldown,
-            lastGesture: lastGesturePerFaceRef.current[index] || null,
+            lastGesture: lastGesturePerFaceRef.current[faceId] || null,
           };
         });
 
@@ -282,14 +356,17 @@ export const useMediaPipeFaceDetection = (
           error: null
         }));
 
+        // Process gesture history for each face
         newFaces.forEach(face => {
           processGestureHistory(face.id);
         });
 
+        // Handle conflict detection between faces with different votes
         const yesFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'yes');
         const noFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'no');
 
         if (yesFaces.length && noFaces.length) {
+          // Draw connection lines between conflicting faces
           yesFaces.forEach(yf => {
             noFaces.forEach(nf => {
               ctx.save();
@@ -303,6 +380,7 @@ export const useMediaPipeFaceDetection = (
             });
           });
 
+          // Trigger conflict callback with rate limiting
           if (onConflictPair) {
             const nowTime = performance.now();
             if (nowTime - lastConflictTimeRef.current > GESTURE_COOLDOWN_MS) {
@@ -317,6 +395,7 @@ export const useMediaPipeFaceDetection = (
     },
     [
       canvasRef,
+      getStableFaceId,
       computeFaceRect,
       detectGestureFromLandmarks,
       processGestureHistory,

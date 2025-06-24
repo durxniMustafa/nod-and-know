@@ -35,6 +35,8 @@ const Index = () => {
   const [timeRemaining, setTimeRemaining] = useState(QUESTION_DURATION_MS / 1000);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  
+  // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
   // On mount, load session data
@@ -58,6 +60,8 @@ const Index = () => {
       setVotes(questionVotes);
 
       setSessionStats(dataService.getSessionStats());
+      
+      console.log(`Switched to question ${nextQuestion + 1}: "${SECURITY_QUESTIONS[nextQuestion]}"`);
     }, 45000);
 
     return () => clearInterval(interval);
@@ -76,21 +80,26 @@ const Index = () => {
     return () => clearInterval(t);
   }, [currentQuestion]);
 
-  // Avoid toggling fallback mode too quickly around ~15–20 FPS
- 
-  
-
   // -----------------------------------------
   // 1) Memoized Callback: handleGestureDetected
   // -----------------------------------------
   const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
+    console.log(`Gesture detected: Face ${faceId} voted ${gesture} for question ${currentQuestion + 1}`);
+    
+    // Initialize vote tracking for this question if not exists
     if (!faceVotesRef.current[currentQuestion]) {
       faceVotesRef.current[currentQuestion] = new Set();
     }
+    
+    // Check if this face has already voted for this question
     if (faceVotesRef.current[currentQuestion].has(faceId)) {
+      console.log(`Face ${faceId} has already voted for question ${currentQuestion + 1}, ignoring duplicate vote`);
       return;
     }
+    
+    // Record that this face has voted for this question
     faceVotesRef.current[currentQuestion].add(faceId);
+    console.log(`Recorded vote for Face ${faceId} on question ${currentQuestion + 1}. Total faces voted: ${faceVotesRef.current[currentQuestion].size}`);
 
     // Add vote to persistence
     const newVotes = dataService.addVote(currentQuestion, gesture);
@@ -100,21 +109,25 @@ const Index = () => {
     dataService.logAnalyticsEvent('gesture_detected', {
       questionId: currentQuestion,
       gesture,
+      faceId,
       fps,
     });
 
     // Update session stats
     setSessionStats(dataService.getSessionStats());
 
-    // Simple "minority confetti" logic
+    // Minority confetti logic
     const total = newVotes.yes + newVotes.no;
     if (total > 3) {
       const yesPct = newVotes.yes / total;
       const noPct = newVotes.no / total;
       if (yesPct < 0.25 || noPct < 0.25) {
         console.log('🎉 Minority opinion detected! Great discussion starter.');
+        toast('Minority viewpoint detected! 🎉 This creates interesting discussions.');
       }
     }
+    
+    console.log(`Vote recorded: ${gesture.toUpperCase()} | Current totals - Yes: ${newVotes.yes}, No: ${newVotes.no}`);
   }, [currentQuestion, fps]);
 
   // -----------------------------------------
@@ -126,6 +139,7 @@ const Index = () => {
   }, []);
 
   const handleConflictPair = useCallback(() => {
+    console.log('Conflict pair detected - opening discussion');
     toast('Matched with an opposite viewpoint! Join the discussion.');
     if (!isDiscussionOpen) {
       setIsDiscussionOpen(true);
@@ -141,6 +155,9 @@ const Index = () => {
       setVotes({ yes: 0, no: 0 });
       setCurrentQuestion(0);
       setSessionStats(dataService.getSessionStats());
+      // Clear face vote tracking
+      faceVotesRef.current = {};
+      console.log('Session data cleared');
     }
   };
 
@@ -153,6 +170,15 @@ const Index = () => {
     a.download = `securematch_data_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    console.log('Data exported');
+  };
+
+  // Development helpers
+  const handleTestVote = (gesture: 'yes' | 'no') => {
+    // Use a negative face ID for test votes to distinguish from real faces
+    const testFaceId = Math.floor(Math.random() * -1000);
+    console.log(`Test vote: ${gesture} (Face ID: ${testFaceId})`);
+    handleGestureDetected(gesture, testFaceId);
   };
 
   // -----------------------------------------
@@ -182,21 +208,24 @@ const Index = () => {
             <Badge variant="outline" className="text-yellow-400 border-yellow-400">
               Session: {Math.round(sessionStats.sessionDuration / 1000 / 60)}m
             </Badge>
-          {fallbackMode && (
-            <Badge variant="destructive">
-              Fallback Mode
+            <Badge variant="outline" className="text-orange-400 border-orange-400">
+              Q{currentQuestion + 1} Voters: {faceVotesRef.current[currentQuestion]?.size || 0}
             </Badge>
-          )}
+            {fallbackMode && (
+              <Badge variant="destructive">
+                Fallback Mode
+              </Badge>
+            )}
+          </div>
+          <div className="mt-4 flex gap-2 justify-center">
+            <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
+              Help
+            </Button>
+            <Link to="/stats">
+              <Button variant="outline" size="sm">Stats</Button>
+            </Link>
+          </div>
         </div>
-        <div className="mt-4 flex gap-2 justify-center">
-          <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
-            Help
-          </Button>
-          <Link to="/stats">
-            <Button variant="outline" size="sm">Stats</Button>
-          </Link>
-        </div>
-      </div>
 
         <QuestionDisplay
           question={SECURITY_QUESTIONS[currentQuestion]}
@@ -234,14 +263,14 @@ const Index = () => {
               {/* Dev Controls */}
               <div className="mt-4 flex gap-2 justify-center flex-wrap">
                 <Button
-                  onClick={() => handleGestureDetected('yes', -1)}
+                  onClick={() => handleTestVote('yes')}
                   className="bg-green-600 hover:bg-green-700"
                   size="sm"
                 >
                   Test YES
                 </Button>
                 <Button
-                  onClick={() => handleGestureDetected('no', -1)}
+                  onClick={() => handleTestVote('no')}
                   className="bg-red-600 hover:bg-red-700"
                   size="sm"
                 >
@@ -317,7 +346,28 @@ const Index = () => {
                     {sessionStats.chatOpened ? 'Yes' : 'No'}
                   </span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Current Q Faces:</span>
+                  <span className="text-white">
+                    {faceVotesRef.current[currentQuestion]?.size || 0}
+                  </span>
+                </div>
               </div>
+              
+              {debugMode && (
+                <div className="mt-4 pt-4 border-t border-gray-600">
+                  <h4 className="text-sm font-semibold text-gray-300 mb-2">Debug Info</h4>
+                  <div className="text-xs text-gray-400 space-y-1">
+                    <div>Detected Faces: {detectedFaces.map((f: any) => f.id).join(', ') || 'None'}</div>
+                    <div>Face Vote History:</div>
+                    {Object.entries(faceVotesRef.current).map(([qId, faceIds]) => (
+                      <div key={qId} className="ml-2">
+                        Q{parseInt(qId) + 1}: [{Array.from(faceIds as Set<number>).join(', ')}]
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
         </div>

@@ -1,24 +1,34 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Send } from 'lucide-react';
+import { X, Send, QrCode } from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
 
 interface ChatInterfaceProps {
   question: string;
   onClose: () => void;
+  roomId?: string;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  question,
+  onClose,
+  roomId: overrideRoomId
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [showQR, setShowQR] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const roomId = useMemo(
+    () => overrideRoomId ?? `question_${btoa(question).slice(0, 8)}`,
+    [question, overrideRoomId]
+  );
 
   useEffect(() => {
     // Log chat opened event
@@ -60,14 +70,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
     });
 
     // Join room based on question
-    const roomId = `question_${btoa(question).slice(0, 8)}`;
     websocketService.joinRoom(roomId);
 
     return () => {
       websocketService.leaveRoom();
       websocketService.disconnect();
     };
-  }, [question]);
+  }, [question, overrideRoomId]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -93,11 +102,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
     }
   };
 
+  const qrSrc = useMemo(() => {
+    const url = `${window.location.origin}?room=${encodeURIComponent(
+      roomId
+    )}&topic=${encodeURIComponent(question)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+      url
+    )}`;
+  }, [roomId, question]);
+
   const currentUserId = websocketService.getCurrentUserId();
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col">
+      <Card className="w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col relative">
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
           <div className="flex-1">
@@ -116,9 +134,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
               )}
             </div>
           </div>
-          <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowQR(true)} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+              <QrCode className="w-5 h-5" />
+            </Button>
+            <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -188,6 +211,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
           </div>
         </div>
       </Card>
+      {showQR && (
+        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center">
+          <img src={qrSrc} alt="QR code" className="bg-white p-2 rounded" />
+          <Button onClick={() => setShowQR(false)} variant="ghost" className="mt-4 text-gray-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

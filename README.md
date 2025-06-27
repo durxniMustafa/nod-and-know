@@ -8,13 +8,19 @@ Nod & Know is an interactive security awareness demo. It uses your webcam to det
    ```sh
    npm install
    ```
-2. Start the development server:
+2. Start the WebSocket server:
+   ```sh
+   npm run server
+   ```
+   This starts a Socket.IO server on <http://localhost:3001>.
+
+3. Start the development server:
    ```sh
    npm run dev
    ```
    The app runs on <http://localhost:8080> by default.
    You can view aggregated session statistics at <http://localhost:8080/stats> while the server is running.
-3. Build for production:
+4. Build for production:
    ```sh
    npm run build
    ```
@@ -25,12 +31,12 @@ Nod & Know is an interactive security awareness demo. It uses your webcam to det
 - **src/pages/Index.tsx** – main page that rotates through questions, collects votes and shows charts.
 - **src/components/WebcamFeed.tsx** – handles MediaPipe face detection and interprets head gestures.
 - **src/components/VoteChart.tsx** – displays the yes/no vote counts.
-- **src/components/ChatInterface.tsx** – modal chat window driven by a mocked WebSocket service.
+- **src/components/ChatInterface.tsx** – modal chat window that connects to a Socket.IO chat server and can generate a QR code for joining from another device.
 - **src/services/dataService.ts** – stores session data and lightweight analytics in `localStorage`.
-- **src/services/websocketService.ts** – simulates a chat server for anonymous discussion.
+- **src/services/websocketService.ts** – WebSocket client wrapper used by the chat interface.
 - **src/pages/Stats.tsx** – visualizes anonymous event logs and vote data.
 
-Everything runs entirely in the browser, so no data is sent to a backend.
+Voting runs entirely in the browser. A small Node.js server handles real-time chat messages.
 
 ## Technologies
 

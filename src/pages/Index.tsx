@@ -50,6 +50,8 @@ const Index = () => {
   const [isCooldown, setIsCooldown] = useState(false);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [qrRoomId, setQrRoomId] = useState<string | null>(null);
+  const [qrTopic, setQrTopic] = useState<string | null>(null);
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -62,6 +64,16 @@ const Index = () => {
 
     const savedVotes = dataService.getVotesForQuestion(savedQuestion);
     setVotes(savedVotes);
+
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get('room');
+    if (r) {
+      setQrRoomId(r);
+      const topic = params.get('topic');
+      setQrTopic(topic);
+      setIsDiscussionOpen(true);
+      setFallbackMode(true);
+    }
   }, []);
 
   // Question/Cooldown cycle
@@ -407,8 +419,14 @@ const Index = () => {
         {/* Chat Interface Modal */}
         {isDiscussionOpen && (
           <ChatInterface
-            question={SECURITY_QUESTIONS[currentQuestion]}
-            onClose={() => setIsDiscussionOpen(false)}
+            question={qrTopic ?? SECURITY_QUESTIONS[currentQuestion]}
+            roomId={qrRoomId ?? undefined}
+            onClose={() => {
+              setIsDiscussionOpen(false);
+              setQrRoomId(null);
+              setQrTopic(null);
+              setFallbackMode(false);
+            }}
           />
         )}
         <HelpDialog open={isHelpOpen} onOpenChange={setIsHelpOpen} />

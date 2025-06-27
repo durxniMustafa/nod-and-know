@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import QRCode from 'qrcode.js';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Log chat opened event
@@ -63,6 +65,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
     const roomId = `question_${btoa(question).slice(0, 8)}`;
     websocketService.joinRoom(roomId);
 
+    if (qrRef.current) {
+      qrRef.current.innerHTML = '';
+      const url = `${window.location.origin}/chat?q=${encodeURIComponent(question)}`;
+      // eslint-disable-next-line no-new
+      new QRCode(qrRef.current, {
+        text: url,
+        width: 96,
+        height: 96,
+      });
+    }
+
     return () => {
       websocketService.leaveRoom();
       websocketService.disconnect();
@@ -99,7 +112,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col">
         {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+        <div className="flex justify-between items-start p-4 border-b border-gray-700">
           <div className="flex-1">
             <h2 className="text-xl font-semibold text-white">Security Discussion</h2>
             <div className="flex items-center gap-4 mt-1">
@@ -116,9 +129,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
               )}
             </div>
           </div>
-          <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </Button>
+          <div className="flex items-center gap-4">
+            <div ref={qrRef} className="w-24 h-24" />
+            <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
 
         {/* Messages */}

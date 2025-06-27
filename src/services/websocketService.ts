@@ -43,51 +43,39 @@ class WebSocketService {
 
   connect(callbacks: WebSocketServiceCallbacks) {
     this.callbacks = callbacks;
-    
-    // For demo purposes, we'll simulate WebSocket with local state
-    // In production, this would connect to a real WebSocket server
-    this.simulateConnection();
-  }
 
-  private simulateConnection() {
-    // Simulate connection delay
-    setTimeout(() => {
+    const url = process.env.NODE_ENV === 'production'
+      ? undefined
+      : 'http://localhost:3001';
+    this.socket = io(url, {
+      query: { username: this.username }
+    });
+
+    this.socket.on('connect', () => {
       this.callbacks?.onConnectionStatusChange(true);
-      this.simulateIncomingMessages();
-    }, 1000);
-  }
+    });
 
-  private simulateIncomingMessages() {
-    const messages = [
-      "I think 2FA is essential these days!",
-      "Had my account compromised once, learned my lesson about password reuse.",
-      "Anyone know good password managers?",
-      "Biometric authentication feels so much safer.",
-      "The security vs convenience balance is tricky."
-    ];
+    this.socket.on('disconnect', () => {
+      this.callbacks?.onConnectionStatusChange(false);
+    });
 
-    messages.forEach((text, index) => {
-      setTimeout(() => {
-        const message: ChatMessage = {
-          id: Date.now().toString() + index,
-          text,
-          timestamp: new Date(),
-          userId: 'other_user_' + index,
-          username: `SecurityUser${index + 1}`
-        };
-        this.callbacks?.onMessage(message);
-      }, (index + 1) * 5000 + Math.random() * 3000);
+    this.socket.on('message', (message: ChatMessage) => {
+      message.timestamp = new Date(message.timestamp);
+      this.callbacks?.onMessage(message);
+    });
+
+    this.socket.on('user_joined', (username: string) => {
+      this.callbacks?.onUserJoined(username);
+    });
+
+    this.socket.on('user_left', (username: string) => {
+      this.callbacks?.onUserLeft(username);
     });
   }
 
   joinRoom(roomId: string) {
     this.currentRoom = roomId;
-    console.log(`Joined room: ${roomId}`);
-    
-    // Simulate user joining
-    setTimeout(() => {
-      this.callbacks?.onUserJoined('SecurityExpert42');
-    }, 2000);
+    this.socket?.emit('join', { roomId, username: this.username });
   }
 
   sendMessage(text: string) {
@@ -101,41 +89,22 @@ class WebSocketService {
       username: this.username
     };
 
-    // Simulate message sending
-    this.callbacks.onMessage(message);
-
-    // Simulate response
-    setTimeout(() => {
-      const responses = [
-        "Great point!",
-        "I agree with that.",
-        "That's really helpful, thanks!",
-        "Same experience here.",
-        "Good reminder for everyone."
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      
-      const responseMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        text: randomResponse,
-        timestamp: new Date(),
-        userId: 'responder_' + Date.now(),
-        username: 'SecurityBuddy'
-      };
-      
-      this.callbacks?.onMessage(responseMessage);
-    }, 1000 + Math.random() * 2000);
+    this.socket?.emit('message', { roomId: this.currentRoom, message });
   }
 
   leaveRoom() {
     if (this.currentRoom) {
-      console.log(`Left room: ${this.currentRoom}`);
+      this.socket?.emit('leave', this.currentRoom);
       this.currentRoom = null;
     }
   }
 
   disconnect() {
     if (this.socket) {
+      if (this.currentRoom) {
+        this.socket.emit('leave', this.currentRoom);
+        this.currentRoom = null;
+      }
       this.socket.disconnect();
       this.socket = null;
     }

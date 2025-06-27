@@ -7,7 +7,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { X, Send, QrCode } from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
-import QRCode from 'qrcode.js';
 
 interface ChatInterfaceProps {
   question: string;
@@ -26,7 +25,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [showQR, setShowQR] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const qrRef = useRef<HTMLDivElement>(null);
   const roomId = useMemo(
     () => overrideRoomId ?? `question_${btoa(question).slice(0, 8)}`,
     [question, overrideRoomId]
@@ -104,19 +102,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (showQR && qrRef.current) {
-      qrRef.current.innerHTML = '';
-      // @ts-ignore
-      new QRCode(qrRef.current, {
-        text: `${window.location.origin}?room=${encodeURIComponent(
-          roomId
-        )}&topic=${encodeURIComponent(question)}`,
-        width: 160,
-        height: 160
-      });
-    }
-  }, [showQR, roomId]);
+  const qrSrc = useMemo(() => {
+    const url = `${window.location.origin}?room=${encodeURIComponent(
+      roomId
+    )}&topic=${encodeURIComponent(question)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+      url
+    )}`;
+  }, [roomId, question]);
 
   const currentUserId = websocketService.getCurrentUserId();
 
@@ -220,7 +213,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </Card>
       {showQR && (
         <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center">
-          <div ref={qrRef} className="bg-white p-2 rounded" />
+          <img src={qrSrc} alt="QR code" className="bg-white p-2 rounded" />
           <Button onClick={() => setShowQR(false)} variant="ghost" className="mt-4 text-gray-400 hover:text-white">
             <X className="w-5 h-5" />
           </Button>

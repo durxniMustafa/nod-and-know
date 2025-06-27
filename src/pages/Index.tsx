@@ -6,6 +6,7 @@ import WebcamFeed from '@/components/WebcamFeed';
 import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
+import CooldownDisplay from '@/components/CooldownDisplay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
@@ -22,7 +23,19 @@ const SECURITY_QUESTIONS = [
   "Would you share your login credentials with a close friend?"
 ];
 
+const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = [
+  'no',
+  'yes',
+  'yes',
+  'no',
+  'yes',
+  'no',
+  'yes',
+  'no'
+];
+
 const QUESTION_DURATION_MS = 45000;
+const COOLDOWN_DURATION_MS = 20000;
 
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -33,6 +46,8 @@ const Index = () => {
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [timeRemaining, setTimeRemaining] = useState(QUESTION_DURATION_MS / 1000);
+  const [cooldownRemaining, setCooldownRemaining] = useState(COOLDOWN_DURATION_MS / 1000);
+  const [isCooldown, setIsCooldown] = useState(false);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   
@@ -49,41 +64,51 @@ const Index = () => {
     setVotes(savedVotes);
   }, []);
 
-  // Rotate questions every 45s
+  // Question/Cooldown cycle
   useEffect(() => {
-    const interval = setInterval(() => {
-      const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
-      setCurrentQuestion(nextQuestion);
-      dataService.setCurrentQuestion(nextQuestion);
-
-      const questionVotes = dataService.getVotesForQuestion(nextQuestion);
-      setVotes(questionVotes);
-
-      setSessionStats(dataService.getSessionStats());
-      
-      console.log(`Switched to question ${nextQuestion + 1}: "${SECURITY_QUESTIONS[nextQuestion]}"`);
-    }, 45000);
-
-    return () => clearInterval(interval);
-  }, [currentQuestion]);
-
-  // Countdown timer for current question
-  useEffect(() => {
+    if (isCooldown) return;
     const start = Date.now();
     const tick = () => {
       const elapsed = Date.now() - start;
       const remaining = Math.max(0, QUESTION_DURATION_MS - elapsed);
       setTimeRemaining(Math.ceil(remaining / 1000));
+      if (remaining <= 0) {
+        setIsCooldown(true);
+      }
     };
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, [currentQuestion]);
+  }, [currentQuestion, isCooldown]);
+
+  // Cooldown timer
+  useEffect(() => {
+    if (!isCooldown) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const remaining = Math.max(0, COOLDOWN_DURATION_MS - elapsed);
+      setCooldownRemaining(Math.ceil(remaining / 1000));
+      if (remaining <= 0) {
+        const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
+        setCurrentQuestion(nextQuestion);
+        dataService.setCurrentQuestion(nextQuestion);
+        const questionVotes = dataService.getVotesForQuestion(nextQuestion);
+        setVotes(questionVotes);
+        setSessionStats(dataService.getSessionStats());
+        setIsCooldown(false);
+      }
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [isCooldown, currentQuestion]);
 
   // -----------------------------------------
   // 1) Memoized Callback: handleGestureDetected
   // -----------------------------------------
   const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
+    if (isCooldown) return;
     console.log(`Gesture detected: Face ${faceId} voted ${gesture} for question ${currentQuestion + 1}`);
     
     // Initialize vote tracking for this question if not exists
@@ -227,13 +252,20 @@ const Index = () => {
           </div>
         </div>
 
-        <QuestionDisplay
-          question={SECURITY_QUESTIONS[currentQuestion]}
-          questionIndex={currentQuestion + 1}
-          totalQuestions={SECURITY_QUESTIONS.length}
-          timeRemaining={timeRemaining}
-          questionDuration={QUESTION_DURATION_MS / 1000}
-        />
+        {isCooldown ? (
+          <CooldownDisplay
+            recommended={RECOMMENDED_ANSWERS[currentQuestion]}
+            remaining={cooldownRemaining}
+          />
+        ) : (
+          <QuestionDisplay
+            question={SECURITY_QUESTIONS[currentQuestion]}
+            questionIndex={currentQuestion + 1}
+            totalQuestions={SECURITY_QUESTIONS.length}
+            timeRemaining={timeRemaining}
+            questionDuration={QUESTION_DURATION_MS / 1000}
+          />
+        )}
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Webcam + Controls */}

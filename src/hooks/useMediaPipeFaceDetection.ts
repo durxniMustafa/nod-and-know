@@ -99,7 +99,7 @@ export const useMediaPipeFaceDetection = (
   const REQUIRED_GESTURE_FRAMES = 6;
   const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
-  const NOD_THRESHOLD = 0.05;
+  const NOD_THRESHOLD = 0.04;
   const SHAKE_THRESHOLD = 0.06;
 
   // -------------------------------
@@ -236,14 +236,14 @@ export const useMediaPipeFaceDetection = (
           now - lastTime > GESTURE_COOLDOWN_MS &&
           avgConfidence > GESTURE_CONFIDENCE_THRESHOLD
         ) {
-          if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+          if (yesCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.8)) {
             onGestureDetected('yes', faceId);
             lastGestureTimeMapRef.current[faceId] = now;
             lastGesturePerFaceRef.current[faceId] = 'yes';
             gestureHistoryMapRef.current[faceId] = [];
             preparingRef.current = false;
             setResult(prev => ({ ...prev, isPreparing: false }));
-          } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.9)) {
+          } else if (noCount >= Math.ceil(REQUIRED_GESTURE_FRAMES * 0.8)) {
             onGestureDetected('no', faceId);
             lastGestureTimeMapRef.current[faceId] = now;
             lastGesturePerFaceRef.current[faceId] = 'no';

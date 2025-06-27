@@ -8,13 +8,19 @@ Nod & Know is an interactive security awareness demo. It uses your webcam to det
    ```sh
    npm install
    ```
-2. Start the development server:
+2. Start the WebSocket server:
+   ```sh
+   npm run server
+   ```
+   This starts a Socket.IO server on <http://localhost:3001>.
+
+3. Start the development server:
    ```sh
    npm run dev
    ```
    The app runs on <http://localhost:8080> by default.
    You can view aggregated session statistics at <http://localhost:8080/stats> while the server is running.
-3. Build for production:
+4. Build for production:
    ```sh
    npm run build
    ```

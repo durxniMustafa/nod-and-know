@@ -37,6 +37,40 @@ const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = [
 const QUESTION_DURATION_MS = 45000;
 const COOLDOWN_DURATION_MS = 20000;
 
+// Function to get local IP address
+const getLocalIPAddress = async (): Promise<string> => {
+  try {
+    // Method 1: Try to get local IP using WebRTC
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel('');
+    
+    return new Promise((resolve) => {
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidate = event.candidate.candidate;
+          const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+          if (ipMatch && ipMatch[1] !== '127.0.0.1') {
+            pc.close();
+            resolve(ipMatch[1]);
+            return;
+          }
+        }
+      };
+      
+      pc.createOffer().then(offer => pc.setLocalDescription(offer));
+      
+      // If no IP is obtained within 5 seconds, use fallback
+      setTimeout(() => {
+        pc.close();
+        resolve(window.location.hostname || 'localhost');
+      }, 5000);
+    });
+  } catch (error) {
+    console.warn('Unable to get local IP address, using fallback:', error);
+    return window.location.hostname || 'localhost';
+  }
+};
+
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [votes, setVotes] = useState({ yes: 0, no: 0 });
@@ -52,9 +86,31 @@ const Index = () => {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [qrRoomId, setQrRoomId] = useState<string | null>(null);
   const [qrTopic, setQrTopic] = useState<string | null>(null);
+  const [localIP, setLocalIP] = useState<string>('');
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
+
+  // Generate QR code URL
+  const generateQRCode = useCallback(async () => {
+    try {
+      const ip = await getLocalIPAddress();
+      setLocalIP(ip);
+      
+      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion]).slice(0, 8)}`;
+      const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`;
+      
+      // Use online QR code generation service
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
+      setQrCodeUrl(qrUrl);
+      
+      console.log('Generated chat URL:', chatUrl);
+    } catch (error) {
+      console.error('Failed to generate QR code:', error);
+      toast('Failed to generate QR code, please check network connection');
+    }
+  }, [currentQuestion]);
 
   // On mount, load session data
   useEffect(() => {
@@ -74,7 +130,15 @@ const Index = () => {
       setIsDiscussionOpen(true);
       setFallbackMode(true);
     }
-  }, []);
+
+    // Generate initial QR code
+    generateQRCode();
+  }, [generateQRCode]);
+
+  // Regenerate QR code when question changes
+  useEffect(() => {
+    generateQRCode();
+  }, [currentQuestion, generateQRCode]);
 
   // Question/Cooldown cycle
   useEffect(() => {
@@ -116,9 +180,7 @@ const Index = () => {
     return () => clearInterval(t);
   }, [isCooldown, currentQuestion]);
 
-  // -----------------------------------------
-  // 1) Memoized Callback: handleGestureDetected
-  // -----------------------------------------
+  // Memoized Callback: handleGestureDetected
   const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
     if (isCooldown) return;
     console.log(`Gesture detected: Face ${faceId} voted ${gesture} for question ${currentQuestion + 1}`);
@@ -167,9 +229,7 @@ const Index = () => {
     console.log(`Vote recorded: ${gesture.toUpperCase()} | Current totals - Yes: ${newVotes.yes}, No: ${newVotes.no}`);
   }, [currentQuestion, fps]);
 
-  // -----------------------------------------
-  // 2) Memoized Callback: handleFaceData
-  // -----------------------------------------
+  // Memoized Callback: handleFaceData
   const handleFaceData = useCallback((faces: any[], currentFps: number) => {
     setDetectedFaces(faces);
     setFps(currentFps);
@@ -180,9 +240,7 @@ const Index = () => {
     toast('It\'s a cyber match!');
   }, []);
 
-  // -----------------------------------------
   // Clear / Export data
-  // -----------------------------------------
   const handleClearData = () => {
     if (confirm('Clear all session data? This will reset votes and statistics.')) {
       dataService.clearSessionData();
@@ -215,9 +273,22 @@ const Index = () => {
     handleGestureDetected(gesture, testFaceId);
   };
 
-  // -----------------------------------------
-  // RENDER
-  // -----------------------------------------
+  // Copy chat link to clipboard
+  const copyToClipboard = async () => {
+    if (localIP) {
+      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion]).slice(0, 8)}`;
+      const chatUrl = `http://${localIP}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`;
+      
+      try {
+        await navigator.clipboard.writeText(chatUrl);
+        toast('Chat link copied to clipboard!');
+      } catch (error) {
+        console.error('Copy failed:', error);
+        toast('Copy failed, please copy link manually');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
       <div className="max-w-7xl mx-auto">
@@ -286,7 +357,7 @@ const Index = () => {
                 </h2>
                 <p className="text-gray-300 text-sm">
                   {fallbackMode
-                    ? "Scan QR code below to join the discussion"
+                    ? "Welcome to the discussion!"
                     : "Nod for YES • Shake for NO"
                   }
                 </p>
@@ -352,19 +423,55 @@ const Index = () => {
             </Card>
           </div>
 
-          {/* Right: Results + Discussion */}
+          {/* Right: Results + QR Code + Discussion */}
           <div className="space-y-6">
             <VoteChart votes={votes} />
 
+            {/* QR Code Card - Replace original chat button */}
             <Card className="bg-black/50 border-gray-700 p-6 text-center">
-              <Button
-                onClick={() => setIsDiscussionOpen(true)}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105"
-                size="lg"
-              >
-                💬 Join Discussion
-              </Button>
-              <p className="text-gray-400 text-sm mt-2">
+              <h3 className="text-lg font-semibold text-white mb-4">📱 Join Discussion on Mobile</h3>
+              
+              {qrCodeUrl ? (
+                <div className="space-y-4">
+                  <div className="flex justify-center">
+                    <img 
+                      src={qrCodeUrl} 
+                      alt="Scan to join chat" 
+                      className="bg-white p-2 rounded-lg shadow-lg"
+                      style={{ maxWidth: '200px', height: 'auto' }}
+                    />
+                  </div>
+                  
+                  <div className="text-sm text-gray-400">
+                    <p>Scan QR code with your phone</p>
+                    <p>Automatically opens chat page</p>
+                  </div>
+                  
+                  {localIP && (
+                    <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+                      <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
+                      <p className="text-xs text-green-400 font-mono break-all">
+                        http://{localIP}:8080
+                      </p>
+                      <Button
+                        onClick={copyToClipboard}
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 text-xs"
+                      >
+                        Copy Link
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                  <p className="text-gray-400">Generating QR code...</p>
+                </div>
+              )}
+              
+              <p className="text-gray-400 text-xs mt-4">
                 Anonymous chat • No registration required
               </p>
             </Card>
@@ -393,6 +500,12 @@ const Index = () => {
                     {faceVotesRef.current[currentQuestion]?.size || 0}
                   </span>
                 </div>
+                {localIP && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Local IP:</span>
+                    <span className="text-white text-xs">{localIP}</span>
+                  </div>
+                )}
               </div>
               
               {debugMode && (

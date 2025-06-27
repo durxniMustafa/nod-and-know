@@ -99,7 +99,8 @@ export const useMediaPipeFaceDetection = (
   const REQUIRED_GESTURE_FRAMES = 6;
   const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
-  const NOD_THRESHOLD = 0.05;
+  // Lower nod threshold slightly so "yes" gestures register more reliably
+  const NOD_THRESHOLD = 0.03;
   const SHAKE_THRESHOLD = 0.06;
 
   // -------------------------------

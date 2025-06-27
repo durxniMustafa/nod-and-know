@@ -6,6 +6,7 @@ import WebcamFeed from '@/components/WebcamFeed';
 import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
+import AnswerOverlay from '@/components/AnswerOverlay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
@@ -22,7 +23,18 @@ const SECURITY_QUESTIONS = [
   "Would you share your login credentials with a close friend?"
 ];
 
+const RECOMMENDED_ANSWERS = [
+  'No',
+  'Yes',
+  'Yes',
+  'No',
+  'Yes',
+  'No',
+  'Yes',
+  'No',
+];
 const QUESTION_DURATION_MS = 45000;
+const COOLDOWN_DURATION_MS = 20000;
 
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -49,41 +61,50 @@ const Index = () => {
     setVotes(savedVotes);
   }, []);
 
-  // Rotate questions every 45s
+  // Handle question timer and cooldown
+  const [phase, setPhase] = useState<'question' | 'cooldown'>('question');
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
-      setCurrentQuestion(nextQuestion);
-      dataService.setCurrentQuestion(nextQuestion);
-
-      const questionVotes = dataService.getVotesForQuestion(nextQuestion);
-      setVotes(questionVotes);
-
-      setSessionStats(dataService.getSessionStats());
-      
-      console.log(`Switched to question ${nextQuestion + 1}: "${SECURITY_QUESTIONS[nextQuestion]}"`);
-    }, 45000);
-
-    return () => clearInterval(interval);
-  }, [currentQuestion]);
-
-  // Countdown timer for current question
-  useEffect(() => {
+    const duration = phase === 'question' ? QUESTION_DURATION_MS : COOLDOWN_DURATION_MS;
     const start = Date.now();
+
     const tick = () => {
       const elapsed = Date.now() - start;
-      const remaining = Math.max(0, QUESTION_DURATION_MS - elapsed);
+      const remaining = Math.max(0, duration - elapsed);
       setTimeRemaining(Math.ceil(remaining / 1000));
     };
+
     tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [currentQuestion]);
+    const interval = setInterval(tick, 1000);
+    const timeout = setTimeout(() => {
+      if (phase === 'question') {
+        setPhase('cooldown');
+      } else {
+        const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
+        setCurrentQuestion(nextQuestion);
+        dataService.setCurrentQuestion(nextQuestion);
+
+        const questionVotes = dataService.getVotesForQuestion(nextQuestion);
+        setVotes(questionVotes);
+
+        setSessionStats(dataService.getSessionStats());
+
+        console.log(`Switched to question ${nextQuestion + 1}: "${SECURITY_QUESTIONS[nextQuestion]}"`);
+        setPhase('question');
+      }
+    }, duration);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [phase, currentQuestion]);
 
   // -----------------------------------------
   // 1) Memoized Callback: handleGestureDetected
   // -----------------------------------------
   const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
+    if (phase !== 'question') return;
     console.log(`Gesture detected: Face ${faceId} voted ${gesture} for question ${currentQuestion + 1}`);
     
     // Initialize vote tracking for this question if not exists
@@ -128,7 +149,7 @@ const Index = () => {
     }
     
     console.log(`Vote recorded: ${gesture.toUpperCase()} | Current totals - Yes: ${newVotes.yes}, No: ${newVotes.no}`);
-  }, [currentQuestion, fps]);
+  }, [currentQuestion, fps, phase]);
 
   // -----------------------------------------
   // 2) Memoized Callback: handleFaceData
@@ -227,13 +248,15 @@ const Index = () => {
           </div>
         </div>
 
-        <QuestionDisplay
-          question={SECURITY_QUESTIONS[currentQuestion]}
-          questionIndex={currentQuestion + 1}
-          totalQuestions={SECURITY_QUESTIONS.length}
-          timeRemaining={timeRemaining}
-          questionDuration={QUESTION_DURATION_MS / 1000}
-        />
+        {phase === 'question' && (
+          <QuestionDisplay
+            question={SECURITY_QUESTIONS[currentQuestion]}
+            questionIndex={currentQuestion + 1}
+            totalQuestions={SECURITY_QUESTIONS.length}
+            timeRemaining={timeRemaining}
+            questionDuration={QUESTION_DURATION_MS / 1000}
+          />
+        )}
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Webcam + Controls */}
@@ -380,6 +403,12 @@ const Index = () => {
           />
         )}
         <HelpDialog open={isHelpOpen} onOpenChange={setIsHelpOpen} />
+        <AnswerOverlay
+          open={phase === 'cooldown'}
+          recommendedAnswer={RECOMMENDED_ANSWERS[currentQuestion]}
+          timeRemaining={timeRemaining}
+          duration={COOLDOWN_DURATION_MS / 1000}
+        />
       </div>
     </div>
   );

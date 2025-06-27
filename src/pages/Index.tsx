@@ -11,6 +11,7 @@ import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const SECURITY_QUESTIONS = [
   "Do you reuse the same password across multiple accounts?",
@@ -249,6 +250,7 @@ const Index = () => {
             <Link to="/stats">
               <Button variant="outline" size="sm">Stats</Button>
             </Link>
+            <ThemeToggle />
           </div>
         </div>
 

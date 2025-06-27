@@ -29,6 +29,17 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('message', payload);
   });
 
+  socket.on('leaveRoom', ({ roomId }) => {
+    socket.leave(roomId);
+    const username = socket.data.username;
+    if (username) {
+      socket.to(roomId).emit('userLeft', username);
+    }
+    if (socket.data.roomId === roomId) {
+      socket.data.roomId = null;
+    }
+  });
+
   socket.on('disconnect', () => {
     const { roomId, username } = socket.data || {};
     if (roomId && username) {

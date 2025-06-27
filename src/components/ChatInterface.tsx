@@ -12,9 +12,14 @@ import QRCode from 'qrcode.js';
 interface ChatInterfaceProps {
   question: string;
   onClose: () => void;
+  roomId?: string;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  question,
+  onClose,
+  roomId: overrideRoomId
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
@@ -22,7 +27,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
   const [showQR, setShowQR] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const qrRef = useRef<HTMLDivElement>(null);
-  const roomId = useMemo(() => `question_${btoa(question).slice(0, 8)}`, [question]);
+  const roomId = useMemo(
+    () => overrideRoomId ?? `question_${btoa(question).slice(0, 8)}`,
+    [question, overrideRoomId]
+  );
 
   useEffect(() => {
     // Log chat opened event
@@ -70,7 +78,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
       websocketService.leaveRoom();
       websocketService.disconnect();
     };
-  }, [question]);
+  }, [question, overrideRoomId]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -101,7 +109,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ question, onClose }) => {
       qrRef.current.innerHTML = '';
       // @ts-ignore
       new QRCode(qrRef.current, {
-        text: `${window.location.origin}?room=${encodeURIComponent(roomId)}`,
+        text: `${window.location.origin}?room=${encodeURIComponent(
+          roomId
+        )}&topic=${encodeURIComponent(question)}`,
         width: 160,
         height: 160
       });

@@ -2,6 +2,17 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { FaceMesh } from '@mediapipe/face_mesh';
 import { Camera } from '@mediapipe/camera_utils';
 
+const COOL_USERNAMES = [
+  'Digital Guardian',
+  'Cyber Maniac',
+  'Quantum Knight',
+  'Byte Bandit',
+  'Firewall Phantom',
+  'Data Ninja',
+  'Crypto Crusader',
+  'Packet Paladin',
+];
+
 interface GestureDetection {
   gesture: 'yes' | 'no' | null;
   confidence: number;
@@ -71,6 +82,8 @@ export const useMediaPipeFaceDetection = (
   // Face tracking for stable IDs
   const trackedFacesRef = useRef<TrackedFace[]>([]);
   const nextFaceIdRef = useRef(1);
+  const usernameMapRef = useRef<Record<number, string>>({});
+  const nextNameIndexRef = useRef(0);
   const FACE_TRACKING_THRESHOLD = 100; // pixels
   const FACE_TIMEOUT_MS = 2000; // Remove faces not seen for 2 seconds
 
@@ -93,6 +106,8 @@ export const useMediaPipeFaceDetection = (
     // Also reset face tracking
     trackedFacesRef.current = [];
     nextFaceIdRef.current = 1;
+    usernameMapRef.current = {};
+    nextNameIndexRef.current = 0;
   }, [questionId]);
 
   // Constants
@@ -118,9 +133,13 @@ export const useMediaPipeFaceDetection = (
     const now = performance.now();
 
     // Clean up old faces that haven't been seen recently
-    trackedFacesRef.current = trackedFacesRef.current.filter(face => 
-      now - face.lastSeen < FACE_TIMEOUT_MS
-    );
+    trackedFacesRef.current = trackedFacesRef.current.filter(face => {
+      const keep = now - face.lastSeen < FACE_TIMEOUT_MS;
+      if (!keep) {
+        delete usernameMapRef.current[face.id];
+      }
+      return keep;
+    });
 
     // Try to match with existing tracked face
     for (const trackedFace of trackedFacesRef.current) {
@@ -146,6 +165,11 @@ export const useMediaPipeFaceDetection = (
       lastSeen: now
     };
     trackedFacesRef.current.push(newFace);
+    if (!usernameMapRef.current[newFace.id]) {
+      const name = COOL_USERNAMES[nextNameIndexRef.current % COOL_USERNAMES.length];
+      usernameMapRef.current[newFace.id] = name;
+      nextNameIndexRef.current++;
+    }
     return newFace.id;
   }, [computeFaceCenter, FACE_TRACKING_THRESHOLD, FACE_TIMEOUT_MS]);
 
@@ -327,10 +351,11 @@ export const useMediaPipeFaceDetection = (
             ctx.strokeStyle = `rgba(${color},${fade})`;
             ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
             
-            // Add face ID label for debugging
+            // Add username label
             ctx.fillStyle = `rgba(${color},${fade})`;
             ctx.font = '16px Arial';
-            ctx.fillText(`Face ${faceId}`, rect.x, rect.y - 5);
+            const name = usernameMapRef.current[faceId] || `User ${faceId}`;
+            ctx.fillText(name, rect.x, rect.y - 5);
             
             ctx.restore();
           }

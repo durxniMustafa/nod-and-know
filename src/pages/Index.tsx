@@ -176,12 +176,9 @@ const Index = () => {
   }, []);
 
   const handleConflictPair = useCallback(() => {
-    console.log('Conflict pair detected - opening discussion');
-    toast('Matched with an opposite viewpoint! Join the discussion.');
-    if (!isDiscussionOpen) {
-      setIsDiscussionOpen(true);
-    }
-  }, [isDiscussionOpen]);
+    console.log('Conflict pair detected');
+    toast('It\'s a cyber match!');
+  }, []);
 
   // -----------------------------------------
   // Clear / Export data

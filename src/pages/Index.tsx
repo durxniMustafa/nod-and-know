@@ -417,7 +417,6 @@ const Index = () => {
         {isDiscussionOpen && (
           <ChatInterface
             question={qrTopic ?? SECURITY_QUESTIONS[currentQuestion]}
-            roomId={qrRoomId ?? undefined}
             onClose={() => {
               setIsDiscussionOpen(false);
               setQrRoomId(null);

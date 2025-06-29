@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Send, QrCode, ArrowLeft } from 'lucide-react';
+import { X, Send, QrCode, ArrowLeft, Users } from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
 
@@ -25,11 +25,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [showQR, setShowQR] = useState(false);
+  const [showUserList, setShowUserList] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const roomId = useMemo(
     () => overrideRoomId ?? `question_${btoa(question).slice(0, 8)}`,
     [question, overrideRoomId]
   );
+
+  // Generate a friendly user ID and name
+  const currentUserId = useMemo(() => {
+    return websocketService.getCurrentUserId();
+  }, []);
+
+  const currentUserName = useMemo(() => {
+    // Get the consistent username from the websocket service
+    // The service now generates consistent names based on user ID
+    const username = websocketService.getCurrentUsername();
+    return username;
+  }, []);
 
   useEffect(() => {
     // Log chat opened event
@@ -47,8 +60,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
       text: isMobileQRMode 
-        ? 'Welcome to the mobile discussion! Share your security experiences and learn from others. All conversations are anonymous.'
-        : 'Welcome! Share your security experiences and learn from others. All conversations are anonymous.',
+        ? `Welcome to the mobile discussion, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`
+        : `Welcome, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`,
       timestamp: new Date(),
       userId: 'system',
       username: 'SecureMatch'
@@ -56,23 +69,41 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     setMessages([topicMessage, welcomeMessage]);
 
-    // Connect to WebSocket
+    // Connect to WebSocket with our username
     websocketService.connect({
       onMessage: (message) => {
         setMessages(prev => [...prev, message]);
       },
       onUserJoined: (username) => {
         setOnlineUsers(prev => [...prev, username]);
+        // Add a system message when someone joins
+        const joinMessage: ChatMessage = {
+          id: `join_${Date.now()}`,
+          text: `${username} joined the discussion`,
+          timestamp: new Date(),
+          userId: 'system',
+          username: 'SecureMatch'
+        };
+        setMessages(prev => [...prev, joinMessage]);
       },
       onUserLeft: (username) => {
         setOnlineUsers(prev => prev.filter(u => u !== username));
+        // Add a system message when someone leaves
+        const leaveMessage: ChatMessage = {
+          id: `leave_${Date.now()}`,
+          text: `${username} left the discussion`,
+          timestamp: new Date(),
+          userId: 'system',
+          username: 'SecureMatch'
+        };
+        setMessages(prev => [...prev, leaveMessage]);
       },
       onConnectionStatusChange: (connected) => {
         setIsConnected(connected);
       }
     });
 
-    // Join room based on question
+    // Join room based on question - the websocket service will use its own username
     websocketService.joinRoom(roomId);
 
     return () => {
@@ -114,7 +145,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     )}`;
   }, [roomId, question]);
 
-  const currentUserId = websocketService.getCurrentUserId();
+  // Toggle user list visibility
+  const toggleUserList = () => {
+    setShowUserList(!showUserList);
+  };
 
   // For mobile QR mode, use full screen layout
   const containerClass = isMobileQRMode 
@@ -141,11 +175,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   {isConnected ? 'Connected' : 'Connecting...'}
                 </span>
               </div>
-              {onlineUsers.length > 0 && (
-                <div className="text-sm text-gray-400">
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={toggleUserList}
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-gray-400 hover:text-white p-1"
+                >
+                  <Users className="w-4 h-4" />
+                </Button>
+                <span className="text-sm text-gray-400">
                   {onlineUsers.length + 1} participant{onlineUsers.length !== 0 ? 's' : ''}
-                </div>
-              )}
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex gap-2">
@@ -163,6 +205,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         {/* Messages */}
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          {/* User List Overlay */}
+          {showUserList && (
+            <div className="mb-4 p-3 bg-gray-800 border border-gray-600 rounded-lg">
+              <h4 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Online Participants ({onlineUsers.length + 1})
+              </h4>
+              <div className="space-y-1">
+                {/* Current user */}
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-blue-400 font-medium">{currentUserName} (You)</span>
+                </div>
+                {/* Other users */}
+                {onlineUsers.map((username, index) => (
+                  <div key={index} className="flex items-center gap-2 text-sm">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-gray-300">{username}</span>
+                  </div>
+                ))}
+              </div>
+              <Button 
+                onClick={toggleUserList}
+                variant="ghost" 
+                size="sm" 
+                className="mt-2 text-xs text-gray-400 hover:text-white w-full"
+              >
+                Hide User List
+              </Button>
+            </div>
+          )}
+          
           <div className="space-y-4">
             {messages.map((message) => {
               const isOwnMessage = message.userId === currentUserId;
@@ -185,6 +259,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     {!isSystemMessage && !isOwnMessage && (
                       <div className="text-xs text-gray-400 mb-1">
                         {message.username}
+                      </div>
+                    )}
+                    {!isSystemMessage && isOwnMessage && (
+                      <div className="text-xs text-blue-200 mb-1">
+                        {currentUserName}
                       </div>
                     )}
                     <p className="whitespace-pre-wrap">{message.text}</p>

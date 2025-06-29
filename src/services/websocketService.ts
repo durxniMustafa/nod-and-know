@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 
 interface ChatMessage {
@@ -33,12 +32,21 @@ class WebSocketService {
   }
 
   private generateUsername(): string {
-    const adjectives = ['Anonymous', 'Curious', 'Security', 'Cyber', 'Digital', 'Tech'];
-    const nouns = ['Explorer', 'Guardian', 'Student', 'Learner', 'Researcher', 'User'];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    const num = Math.floor(Math.random() * 100);
-    return `${adj}${noun}${num}`;
+    // Create a more consistent username generation
+    const adjectives = ['Anonymous', 'Curious', 'Helpful', 'Thoughtful', 'Wise', 'Kind', 'Smart', 'Friendly'];
+    const nouns = ['User', 'Guest', 'Participant', 'Member', 'Contributor', 'Discussant'];
+    
+    // Use user ID to generate consistent but anonymous name
+    const hash = this.userId.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    
+    const adjIndex = Math.abs(hash) % adjectives.length;
+    const nounIndex = Math.abs(hash >> 4) % nouns.length;
+    const number = Math.abs(hash) % 999 + 1;
+    
+    return `${adjectives[adjIndex]} ${nouns[nounIndex]} #${number}`;
   }
 
   connect(callbacks: WebSocketServiceCallbacks) {
@@ -114,6 +122,11 @@ class WebSocketService {
 
   getCurrentUsername(): string {
     return this.username;
+  }
+
+  // Add method to set custom username
+  setCurrentUsername(username: string): void {
+    this.username = username;
   }
 }
 

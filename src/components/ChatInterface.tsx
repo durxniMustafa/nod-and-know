@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { X, Send, QrCode } from 'lucide-react';
+import { X, Send, QrCode, ArrowLeft } from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
 
@@ -12,12 +11,14 @@ interface ChatInterfaceProps {
   question: string;
   onClose: () => void;
   roomId?: string;
+  isMobileQRMode?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   question,
   onClose,
-  roomId: overrideRoomId
+  roomId: overrideRoomId,
+  isMobileQRMode = false
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -45,7 +46,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
-      text: 'Welcome! Share your security experiences and learn from others. All conversations are anonymous.',
+      text: isMobileQRMode 
+        ? 'Welcome to the mobile discussion! Share your security experiences and learn from others. All conversations are anonymous.'
+        : 'Welcome! Share your security experiences and learn from others. All conversations are anonymous.',
       timestamp: new Date(),
       userId: 'system',
       username: 'SecureMatch'
@@ -76,7 +79,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       websocketService.leaveRoom();
       websocketService.disconnect();
     };
-  }, [question, overrideRoomId]);
+  }, [question, overrideRoomId, isMobileQRMode]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -113,13 +116,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const currentUserId = websocketService.getCurrentUserId();
 
+  // For mobile QR mode, use full screen layout
+  const containerClass = isMobileQRMode 
+    ? "fixed inset-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col z-50"
+    : "fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4";
+
+  const cardClass = isMobileQRMode
+    ? "w-full h-full bg-gray-900 border-gray-700 flex flex-col"
+    : "w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col relative";
+
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl h-[80vh] bg-gray-900 border-gray-700 flex flex-col relative">
+    <div className={containerClass}>
+      <Card className={cardClass}>
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
           <div className="flex-1">
-            <h2 className="text-xl font-semibold text-white">Security Discussion</h2>
+            <h2 className="text-xl font-semibold text-white">
+              {isMobileQRMode ? 'Mobile Discussion' : 'Security Discussion'}
+            </h2>
             <div className="flex items-center gap-4 mt-1">
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
@@ -135,11 +149,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => setShowQR(true)} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-              <QrCode className="w-5 h-5" />
-            </Button>
+            {/* Hide QR button in mobile QR mode */}
+            {!isMobileQRMode && (
+              <Button onClick={() => setShowQR(true)} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                <QrCode className="w-5 h-5" />
+              </Button>
+            )}
             <Button onClick={onClose} variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-              <X className="w-5 h-5" />
+              {isMobileQRMode ? <ArrowLeft className="w-5 h-5" /> : <X className="w-5 h-5" />}
             </Button>
           </div>
         </div>
@@ -209,9 +226,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               {newMessage.length}/500
             </div>
           </div>
+          
+          {/* Mobile QR mode specific footer */}
+          {isMobileQRMode && (
+            <div className="mt-3 text-center">
+              <p className="text-xs text-gray-500">
+                📱 Mobile Discussion Mode • Anonymous Chat
+              </p>
+            </div>
+          )}
         </div>
       </Card>
-      {showQR && (
+      
+      {/* QR Modal - Only show in desktop mode */}
+      {showQR && !isMobileQRMode && (
         <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center">
           <img src={qrSrc} alt="QR code" className="bg-white p-2 rounded" />
           <Button onClick={() => setShowQR(false)} variant="ghost" className="mt-4 text-gray-400 hover:text-white">

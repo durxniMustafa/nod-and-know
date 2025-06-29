@@ -6,6 +6,9 @@ interface ChatMessage {
   timestamp: Date;
   userId: string;
   username: string;
+  image?: string;
+  codeSnippet?: string;
+  reactions?: Record<string, string[]>;
 }
 
 interface WebSocketServiceCallbacks {
@@ -13,6 +16,8 @@ interface WebSocketServiceCallbacks {
   onUserJoined: (username: string) => void;
   onUserLeft: (username: string) => void;
   onConnectionStatusChange: (connected: boolean) => void;
+  onReaction: (payload: { messageId: string; emoji: string; userId: string }) => void;
+  onMessageRemoved: (messageId: string) => void;
 }
 
 class WebSocketService {
@@ -79,6 +84,14 @@ class WebSocketService {
     this.socket.on('userLeft', (username: string) => {
       this.callbacks?.onUserLeft(username);
     });
+
+    this.socket.on('reaction', (payload: any) => {
+      this.callbacks?.onReaction(payload);
+    });
+
+    this.socket.on('messageRemoved', ({ messageId }: any) => {
+      this.callbacks?.onMessageRemoved(messageId);
+    });
   }
 
   joinRoom(roomId: string) {
@@ -90,13 +103,33 @@ class WebSocketService {
     });
   }
 
-  sendMessage(text: string) {
+  sendMessage(text: string, image?: string, codeSnippet?: string) {
     if (!this.socket || !this.currentRoom) return;
     this.socket.emit('message', {
       roomId: this.currentRoom,
       text,
       userId: this.userId,
-      username: this.username
+      username: this.username,
+      image,
+      codeSnippet
+    });
+  }
+
+  sendReaction(messageId: string, emoji: string) {
+    if (!this.socket || !this.currentRoom) return;
+    this.socket.emit('reaction', {
+      roomId: this.currentRoom,
+      messageId,
+      emoji,
+      userId: this.userId
+    });
+  }
+
+  reportMessage(messageId: string) {
+    if (!this.socket || !this.currentRoom) return;
+    this.socket.emit('reportMessage', {
+      roomId: this.currentRoom,
+      messageId
     });
   }
 

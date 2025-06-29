@@ -11,6 +11,8 @@ const io = new Server(httpServer, {
   },
 });
 
+const reportCounts = {};
+
 io.on('connection', (socket) => {
   socket.on('joinRoom', ({ roomId, username }) => {
     socket.join(roomId);
@@ -19,15 +21,30 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('userJoined', username);
   });
 
-  socket.on('message', ({ roomId, text, userId, username }) => {
+
+  socket.on('message', ({ roomId, text, userId, username, image, codeSnippet }) => {
     const payload = {
       id: Date.now().toString(),
       text,
       timestamp: new Date().toISOString(),
       userId,
       username,
+      image,
+      codeSnippet,
+      reactions: {}
     };
     io.to(roomId).emit('message', payload);
+  });
+
+  socket.on('reaction', ({ roomId, messageId, emoji, userId }) => {
+    io.to(roomId).emit('reaction', { messageId, emoji, userId });
+  });
+
+  socket.on('reportMessage', ({ roomId, messageId }) => {
+    reportCounts[messageId] = (reportCounts[messageId] || 0) + 1;
+    if (reportCounts[messageId] >= 3) {
+      io.to(roomId).emit('messageRemoved', { messageId });
+    }
   });
 
   socket.on('leaveRoom', ({ roomId }) => {

@@ -25,6 +25,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [showUserList, setShowUserList] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('blockedUsers') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showCodeInput, setShowCodeInput] = useState(false);
+  const [codeSnippet, setCodeSnippet] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const roomId = useMemo(
@@ -72,6 +82,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     websocketService.connect({
       onMessage: (message) => {
         setMessages(prev => [...prev, message]);
+      },
+      onReaction: ({ messageId, emoji, userId }) => {
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  reactions: {
+                    ...m.reactions,
+                    [emoji]: [...(m.reactions?.[emoji] || []), userId]
+                  }
+                }
+              : m
+          )
+        );
+      },
+      onMessageRemoved: (messageId) => {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
       },
       onUserJoined: (username) => {
         setOnlineUsers(prev => [...prev, username]);
@@ -123,8 +151,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleSendMessage = () => {
     if (newMessage.trim() && isConnected) {
-      websocketService.sendMessage(newMessage.trim());
+      websocketService.sendMessage(newMessage.trim(), selectedImage || undefined, showCodeInput ? codeSnippet : undefined);
       setNewMessage('');
+      setSelectedImage(null);
+      setCodeSnippet('');
+      setShowCodeInput(false);
     }
   };
 
@@ -143,10 +174,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setSidebarOpen(!sidebarOpen);
   };
 
+  useEffect(() => {
+    localStorage.setItem('blockedUsers', JSON.stringify(blockedUserIds));
+  }, [blockedUserIds]);
+
   // Close sidebar when clicking outside on mobile
   const closeSidebar = () => {
     if (window.innerWidth < 768) {
       setSidebarOpen(false);
+    }
+  };
+
+  const handleReaction = (messageId: string, emoji: string) => {
+    websocketService.sendReaction(messageId, emoji);
+  };
+
+  const handleReport = (messageId: string) => {
+    websocketService.reportMessage(messageId);
+  };
+
+  const handleBlock = (userId: string) => {
+    if (!blockedUserIds.includes(userId)) {
+      setBlockedUserIds(prev => [...prev, userId]);
     }
   };
 
@@ -272,7 +321,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         {/* Messages Area */}
         <ScrollArea className="flex-1 p-3 md:p-6" ref={scrollAreaRef}>
           <div className="max-w-4xl mx-auto space-y-4">
-            {messages.map((message) => {
+            {messages
+              .filter(m => !blockedUserIds.includes(m.userId))
+              .map((message) => {
               const isOwnMessage = message.userId === currentUserId;
               const isSystemMessage = message.userId === 'system';
               
@@ -293,8 +344,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 >
                   <div className={`max-w-[85%] md:max-w-[70%] ${isOwnMessage ? 'order-2' : 'order-1'}`}>
                     {!isOwnMessage && (
-                      <div className="text-xs text-gray-400 mb-1 px-4">
+                      <div className="text-xs text-gray-400 mb-1 px-4 flex items-center gap-2">
                         {message.username}
+                        <Button variant="ghost" size="xs" className="text-gray-500" onClick={() => handleBlock(message.userId)}>
+                          Block
+                        </Button>
                       </div>
                     )}
                     <div
@@ -304,9 +358,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                           : 'bg-gray-700 text-gray-100'
                       }`}
                     >
+                      {message.image && (
+                        <img src={message.image} alt="attachment" className="mb-2 max-h-48 rounded" />
+                      )}
+                      {message.codeSnippet && (
+                        <pre className="bg-black/40 p-2 rounded mb-2 text-xs overflow-x-auto">
+                          {message.codeSnippet}
+                        </pre>
+                      )}
                       <p className="whitespace-pre-wrap break-words">{message.text}</p>
                       <div className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <Button variant="ghost" size="xs" onClick={() => handleReaction(message.id, '👍')}>
+                          👍 {message.reactions?.['👍']?.length || 0}
+                        </Button>
+                        <Button variant="ghost" size="xs" onClick={() => handleReaction(message.id, '🎉')}>
+                          🎉 {message.reactions?.['🎉']?.length || 0}
+                        </Button>
+                        <Button variant="ghost" size="xs" onClick={() => handleReport(message.id)}>
+                          Report
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -332,12 +405,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 />
               </div>
               
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-gray-400 hover:text-white p-2 md:p-3 hidden sm:flex"
-              >
-                <Smile className="w-4 h-4 md:w-5 md:h-5" />
+              <input
+                type="file"
+                accept="image/*"
+                id="chat-image-input"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => setSelectedImage(reader.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+              <label htmlFor="chat-image-input">
+                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white p-2 md:p-3">
+                  <Smile className="w-4 h-4 md:w-5 md:h-5" />
+                </Button>
+              </label>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white p-2 md:p-3" onClick={() => setShowCodeInput(!showCodeInput)}>
+                Code
               </Button>
               
               <Button 
@@ -348,10 +436,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <Send className="w-4 h-4 md:w-5 md:h-5" />
               </Button>
             </div>
-            
+
             <div className="text-xs text-gray-500 mt-2 text-right">
               {newMessage.length}/500
             </div>
+            {selectedImage && (
+              <div className="mt-2">
+                <img src={selectedImage} alt="preview" className="max-h-32 rounded" />
+              </div>
+            )}
+            {showCodeInput && (
+              <textarea
+                value={codeSnippet}
+                onChange={(e) => setCodeSnippet(e.target.value)}
+                className="mt-2 w-full bg-gray-700 text-white p-2 rounded"
+                placeholder="Enter code snippet"
+              />
+            )}
           </div>
         </div>
       </div>

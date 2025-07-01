@@ -1,20 +1,30 @@
 import pymupdf
 from sentence_transformers import SentenceTransformer
 import chromadb
+from pathlib import Path
 
+# returns all file paths that has .pdf as extension in the specified directory
+pdf_search = Path("Papers/").glob("*.pdf")
 
-#1.Step using PyMuPDF: Parse PDF File
- # imports the pymupdf library
-doc = pymupdf.open("Papers/PSUI_Interaction.pdf") # open a document
-text = ""
-for page in doc: # iterate the document pages
-    text += page.get_text() # get plain text encoded as UTF-8
+#Converts each found PDF file's path to its absolute path as a string.
+#file.absolute() returns the full path to each PDF file
+pdf_files = pdf_files = [str(file.absolute()) for file in pdf_search]
 
-#1.5 Chunk text
+#create chunks from text
 def chunk_text(text, chunk_size=300):
     return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
-chunks = chunk_text(text)
+text = ""
+
+for pdf in pdf_files:
+    with pymupdf.open(pdf) as doc:
+        for page in doc: # iterate the document pages
+            text += page.get_text() # get plain text encoded as UTF-8
+            
+            meta = doc.metadata # save metadata
+            chunks = chunk_text(text) # safe chunks
+
+            
 
 #2. Step using all-MiniLM-L6-v2: covert text to vectors
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')

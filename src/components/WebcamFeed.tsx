@@ -11,6 +11,8 @@ interface WebcamFeedProps {
   showOutlines?: boolean;
   /** Current question index used to reset overlay colors */
   questionId: number;
+  nodThreshold: number;
+  shakeThreshold: number;
 }
 
 interface HeadPose {

@@ -52,6 +52,8 @@ const Index = () => {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [qrRoomId, setQrRoomId] = useState<string | null>(null);
   const [qrTopic, setQrTopic] = useState<string | null>(null);
+  const [nodThreshold, setNodThreshold] = useState(0.04);
+  const [shakeThreshold, setShakeThreshold] = useState(0.06);
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -276,6 +278,36 @@ const Index = () => {
           />
         )}
 
+        {/* Threshold Slider Controls */}
+        <div className="flex gap-8 mb-6">
+          <div>
+            <label className="block text-sm text-white mb-1">
+              Nicken Threshold: {nodThreshold}
+            </label>
+            <input
+              type="range"
+              min="0.01"
+              max="0.15"
+              step="0.005"
+              value={nodThreshold}
+              onChange={e => setNodThreshold(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-white mb-1">
+              Kopfschütteln Threshold: {shakeThreshold}
+            </label>
+            <input
+              type="range"
+              min="0.01"
+              max="0.15"
+              step="0.005"
+              value={shakeThreshold}
+              onChange={e => setShakeThreshold(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Webcam + Controls */}
           <div className="lg:col-span-2">
@@ -299,6 +331,8 @@ const Index = () => {
                 fallbackMode={fallbackMode}
                 debugMode={debugMode}
                 questionId={currentQuestion}
+                nodThreshold={nodThreshold}
+                shakeThreshold={shakeThreshold}
               />
 
               {/* Dev Controls */}

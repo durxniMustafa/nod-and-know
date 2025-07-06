@@ -103,7 +103,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
 
     // Join room based on question
-    websocketService.joinRoom(roomId);
+    websocketService.joinRoom(roomId, question);
 
     return () => {
       websocketService.leaveRoom();

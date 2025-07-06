@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 
 // Simple wrapper to call DeepSeek's chat API
 async function callDeepSeek(prompt) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = "sk-ec21af60d61d4325a27680ce6721f4f2"
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY environment variable not set');
   }

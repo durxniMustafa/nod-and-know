@@ -81,12 +81,13 @@ class WebSocketService {
     });
   }
 
-  joinRoom(roomId: string) {
+  joinRoom(roomId: string, topic?: string) {
     if (!this.socket) return;
     this.currentRoom = roomId;
     this.socket.emit('joinRoom', {
       roomId,
-      username: this.username
+      username: this.username,
+      topic,
     });
   }
 

@@ -51,7 +51,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       username: 'SecureMatch'
     };
 
-    setMessages([topicMessage, welcomeMessage]);
+    const aiHintMessage: ChatMessage = {
+      id: 'ai_hint',
+      text: 'Hint: mention @ai to call our AI helper for clarification on the question.',
+      timestamp: new Date(),
+      userId: 'system',
+      username: 'SecureMatch'
+    };
+
+    setMessages([topicMessage, welcomeMessage, aiHintMessage]);
 
     // Connect to WebSocket
     websocketService.connect({
@@ -203,7 +211,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
           <div className="flex justify-between items-center mt-2">
             <p className="text-xs text-gray-400">
-              💡 Tip: Share experiences to help others learn about security practices
+              💡 Tip: Share experiences to help others learn about security practices. Mention @ai for clarifications.
             </p>
             <div className="text-xs text-gray-500">
               {newMessage.length}/500

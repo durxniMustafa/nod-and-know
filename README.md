@@ -48,3 +48,13 @@ Voting runs entirely in the browser. A small Node.js server handles real-time ch
 ## Deployment
 
 After building the project, serve the contents of the `dist` folder with any static hosting provider.
+
+## Environment Variables
+
+The chat server can respond to `@AI` messages using OpenAI. Provide your API key before starting the server:
+
+```sh
+export OPENAI_API_KEY=your-key-here
+```
+
+If you are using Anthropic instead, set `ANTHROPIC_API_KEY` instead of `OPENAI_API_KEY`.

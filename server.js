@@ -1,8 +1,11 @@
 // server.js
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import OpenAI from 'openai';
 
 const httpServer = createServer();
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const io = new Server(httpServer, {
   cors: {
@@ -19,7 +22,7 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('userJoined', username);
   });
 
-  socket.on('message', ({ roomId, text, userId, username }) => {
+  socket.on('message', async ({ roomId, text, userId, username }) => {
     const payload = {
       id: Date.now().toString(),
       text,
@@ -28,6 +31,30 @@ io.on('connection', (socket) => {
       username,
     };
     io.to(roomId).emit('message', payload);
+
+    if (text && text.includes('@AI')) {
+      const question = text.replace('@AI', '').trim();
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant focused on security best practices.' },
+            { role: 'user', content: question },
+          ],
+          max_tokens: 200,
+        });
+        const aiPayload = {
+          id: Date.now().toString(),
+          text: completion.choices[0]?.message?.content?.trim() || 'I could not generate a response.',
+          timestamp: new Date().toISOString(),
+          userId: 'bot',
+          username: 'SecurityBot',
+        };
+        io.to(roomId).emit('message', aiPayload);
+      } catch (err) {
+        console.error('OpenAI error:', err);
+      }
+    }
   });
 
   socket.on('leaveRoom', ({ roomId }) => {

@@ -105,6 +105,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     // Join room based on question
     websocketService.joinRoom(roomId, question);
 
+    // Fetch AI answer and add as message
+    fetch(`/ai-answer?q=${encodeURIComponent(question)}`)
+      .then(res => res.json())
+      .then(data => {
+        const aiMsg: ChatMessage = {
+          id: `ai_${Date.now()}`,
+          text: data.answer,
+          timestamp: new Date(),
+          userId: 'deepseek',
+          username: 'AI Assistant'
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      })
+      .catch(err => console.error('Failed to fetch AI answer', err));
+
     return () => {
       websocketService.leaveRoom();
       websocketService.disconnect();

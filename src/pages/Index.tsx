@@ -9,6 +9,7 @@ import QuestionDisplay from '@/components/QuestionDisplay';
 import CooldownDisplay from '@/components/CooldownDisplay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
+import ThemeToggle from '@/components/ThemeToggle';
 import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
 
@@ -349,13 +350,14 @@ const Index = () => {
                 </Badge>
               )}
             </div>
-            <div className="mt-4 flex gap-2 justify-center">
+            <div className="mt-4 flex gap-2 justify-center items-center">
               <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
                 Help
               </Button>
               <Link to="/stats">
                 <Button variant="outline" size="sm">Stats</Button>
               </Link>
+              <ThemeToggle />
             </div>
           </div>
 

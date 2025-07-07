@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Home, FileText, Users, Settings, LogOut, Send, Smile, Menu, X } from 'lucide-react';
+import { Home, FileText, Users, Settings, LogOut, Send, Smile, Menu, X, Bot, Loader2 } from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
 
@@ -25,6 +25,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [showUserList, setShowUserList] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const roomId = useMemo(
@@ -144,11 +145,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() && isConnected) {
-      websocketService.sendMessage(newMessage.trim());
-      setNewMessage('');
+  const handleSendMessage = async () => {
+    const text = newMessage.trim();
+    if (!text || !isConnected) return;
+
+    websocketService.sendMessage(text);
+
+    if (text.startsWith('@ai ')) {
+      setAiLoading(true);
+      try {
+        const query = text.slice(4).trim();
+        const res = await fetch(`/ai-answer?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        const aiMsg: ChatMessage = {
+          id: `ai_${Date.now()}`,
+          text: data.answer,
+          timestamp: new Date(),
+          userId: 'deepseek',
+          username: 'AI Assistant'
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      } catch (err) {
+        console.error('Failed to fetch AI reply', err);
+      } finally {
+        setAiLoading(false);
+      }
     }
+
+    setNewMessage('');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -298,6 +322,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {messages.map((message) => {
               const isOwnMessage = message.userId === currentUserId;
               const isSystemMessage = message.userId === 'system';
+              const isAiMessage = message.userId === 'deepseek';
               
               if (isSystemMessage) {
                 return (
@@ -316,13 +341,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 >
                   <div className={`max-w-[85%] md:max-w-[70%] ${isOwnMessage ? 'order-2' : 'order-1'}`}>
                     {!isOwnMessage && (
-                      <div className="text-xs text-gray-400 mb-1 px-4">
-                        {message.username}
+                      <div className="text-xs text-gray-400 mb-1 px-4 flex items-center gap-1">
+                        {isAiMessage && <Bot className="w-3 h-3" />} {message.username}
                       </div>
                     )}
                     <div
                       className={`px-4 py-3 rounded-2xl ${
-                        isOwnMessage
+                        isAiMessage
+                          ? 'bg-purple-600 text-white'
+                          : isOwnMessage
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-gray-100'
                       }`}
@@ -345,6 +372,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             })}
           </div>
         </ScrollArea>
+
+        {aiLoading && (
+          <div className="p-2 text-sm text-gray-400 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            AI Assistant is typing...
+          </div>
+        )}
 
         {/* Message Input */}
         <div className="bg-gray-800 border-t border-gray-700 p-3 md:p-4">
@@ -370,12 +404,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <Smile className="w-4 h-4 md:w-5 md:h-5" />
               </Button>
               
-              <Button 
+              <Button
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim() || !isConnected}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 p-2 md:p-3 rounded-lg"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 p-2 md:p-3 rounded-lg flex items-center justify-center"
               >
-                <Send className="w-4 h-4 md:w-5 md:h-5" />
+                {aiLoading ? (
+                  <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 md:w-5 md:h-5" />
+                )}
               </Button>
             </div>
             

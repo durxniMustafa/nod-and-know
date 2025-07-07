@@ -58,9 +58,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
-      text: isMobileQRMode 
-        ? `Welcome to the mobile discussion, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`
-        : `Welcome, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`,
+      text: isMobileQRMode
+        ? `Welcome to the mobile discussion, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous. Type @ai and a question for instant guidance.`
+        : `Welcome, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous. Type @ai followed by a question for instant guidance.`,
       timestamp: new Date(),
       userId: 'system',
       username: 'SecureMatch'
@@ -104,6 +104,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     // Join room based on question
     websocketService.joinRoom(roomId, question);
+
+    // Fetch AI answer and add as message
+    fetch(`/ai-answer?q=${encodeURIComponent(question)}`)
+      .then(res => res.json())
+      .then(data => {
+        const aiMsg: ChatMessage = {
+          id: `ai_${Date.now()}`,
+          text: data.answer,
+          timestamp: new Date(),
+          userId: 'deepseek',
+          username: 'AI Assistant'
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      })
+      .catch(err => console.error('Failed to fetch AI answer', err));
 
     return () => {
       websocketService.leaveRoom();
@@ -275,12 +290,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {messages.map((message) => {
               const isOwnMessage = message.userId === currentUserId;
               const isSystemMessage = message.userId === 'system';
+              const isAiMessage = message.userId === 'deepseek';
               
               if (isSystemMessage) {
                 return (
                   <div key={message.id} className="text-center">
                     <div className="inline-block px-4 py-2 bg-purple-900/30 text-purple-200 border border-purple-700 rounded-lg text-sm">
                       {message.text}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isAiMessage) {
+                return (
+                  <div key={message.id} className="flex justify-start">
+                    <div className="max-w-[85%] md:max-w-[70%]">
+                      <div className="text-xs text-purple-400 mb-1 px-4">AI Assistant</div>
+                      <div className="px-4 py-3 rounded-2xl bg-purple-700/60 text-purple-50">
+                        <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                        <div className="text-xs opacity-70 mt-1">
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -325,7 +357,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Enter your message"
+                  placeholder="Enter your message or type @ai ..."
                   disabled={!isConnected}
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 rounded-lg px-3 md:px-4 py-2 md:py-3 text-sm md:text-base"
                   maxLength={500}
@@ -351,6 +383,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             <div className="text-xs text-gray-500 mt-2 text-right">
               {newMessage.length}/500
+            </div>
+            <div className="text-xs text-gray-400 mt-2 text-center">
+              Tip: type <span className="font-mono">@ai</span> followed by a question to ask the AI assistant
             </div>
           </div>
         </div>

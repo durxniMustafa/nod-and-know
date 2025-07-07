@@ -8,6 +8,7 @@ interface QuestionDisplayProps {
   totalQuestions: number;
   timeRemaining: number;
   questionDuration: number;
+  aiAnswer?: string;
 }
 
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
@@ -16,6 +17,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   totalQuestions,
   timeRemaining,
   questionDuration,
+  aiAnswer,
 }) => {
   return (
     <Card className="bg-black/60 border-gray-700 p-8 shadow-lg">
@@ -36,6 +38,12 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
           {question}
         </p>
       </div>
+
+      {aiAnswer && (
+        <div className="mb-6 text-sm text-purple-200 text-center whitespace-pre-wrap">
+          <span className="font-semibold text-purple-300">AI says:</span> {aiAnswer}
+        </div>
+      )}
 
       <div className="flex justify-between items-center text-sm text-gray-400">
         <span>Next question in {timeRemaining}s</span>

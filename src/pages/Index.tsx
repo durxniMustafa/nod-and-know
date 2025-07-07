@@ -88,6 +88,7 @@ const Index = () => {
   const [qrTopic, setQrTopic] = useState<string | null>(null);
   const [localIP, setLocalIP] = useState<string>('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [aiAnswer, setAiAnswer] = useState<string>('');
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -143,6 +144,15 @@ const Index = () => {
       generateQRCode();
     }
   }, [currentQuestion, generateQRCode, qrRoomId]);
+
+  // Fetch AI answer when question changes
+  useEffect(() => {
+    setAiAnswer('');
+    fetch(`/ai-answer?q=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`)
+      .then(res => res.json())
+      .then(data => setAiAnswer(data.answer))
+      .catch(err => console.error('Failed to fetch AI answer', err));
+  }, [currentQuestion]);
 
   // Question/Cooldown cycle
   useEffect(() => {
@@ -361,6 +371,7 @@ const Index = () => {
               totalQuestions={SECURITY_QUESTIONS.length}
               timeRemaining={timeRemaining}
               questionDuration={QUESTION_DURATION_MS / 1000}
+              aiAnswer={aiAnswer}
             />
           )}
 

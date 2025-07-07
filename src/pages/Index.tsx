@@ -88,6 +88,8 @@ const Index = () => {
   const [qrTopic, setQrTopic] = useState<string | null>(null);
   const [localIP, setLocalIP] = useState<string>('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [aiAnswer, setAiAnswer] = useState<string>('');
+  const [showAiQrHint, setShowAiQrHint] = useState(false);
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -143,6 +145,27 @@ const Index = () => {
       generateQRCode();
     }
   }, [currentQuestion, generateQRCode, qrRoomId]);
+
+  // Fetch AI answer when question changes
+  useEffect(() => {
+    setAiAnswer('');
+    fetch(`/ai-answer?q=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`)
+      .then(res => res.json())
+      .then(data => setAiAnswer(data.answer))
+      .catch(err => console.error('Failed to fetch AI answer', err));
+  }, [currentQuestion]);
+
+  // Show QR hint for public WiFi question during cooldown
+  useEffect(() => {
+    if (isCooldown && currentQuestion === 5) {
+      setShowAiQrHint(true);
+      setTimeout(() => {
+        document.getElementById('qrCard')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } else {
+      setShowAiQrHint(false);
+    }
+  }, [isCooldown, currentQuestion]);
 
   // Question/Cooldown cycle
   useEffect(() => {
@@ -361,6 +384,7 @@ const Index = () => {
               totalQuestions={SECURITY_QUESTIONS.length}
               timeRemaining={timeRemaining}
               questionDuration={QUESTION_DURATION_MS / 1000}
+              aiAnswer={aiAnswer}
             />
           )}
 
@@ -445,7 +469,12 @@ const Index = () => {
               <VoteChart votes={votes} />
 
               {/* QR Code Card */}
-              <Card className="bg-black/50 border-gray-700 p-6 text-center">
+              <Card
+                id="qrCard"
+                className={`bg-black/50 border-gray-700 p-6 text-center rounded-lg ${
+                  showAiQrHint ? 'animate-pulse border-yellow-500' : ''
+                }`}
+              >
                 <h3 className="text-lg font-semibold text-white mb-4">📱 Join Discussion on Mobile</h3>
                 
                 {qrCodeUrl ? (
@@ -491,6 +520,14 @@ const Index = () => {
                 <p className="text-gray-400 text-xs mt-4">
                   Anonymous chat • No registration required
                 </p>
+                <p className="text-gray-400 text-xs mt-2">
+                  Hint: type <span className="font-mono">@ai</span> in the chat for instant help
+                </p>
+                {showAiQrHint && (
+                  <p className="text-yellow-400 text-xs mt-2 font-semibold">
+                    For details on safe WiFi, open chat and ask <span className="font-mono">@ai</span>
+                  </p>
+                )}
               </Card>
 
               {/* Session Stats */}

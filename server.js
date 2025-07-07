@@ -30,7 +30,31 @@ async function callDeepSeek(prompt) {
   return data.choices?.[0]?.message?.content?.trim() || '';
 }
 
-const httpServer = createServer();
+const httpServer = createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url && req.url.startsWith('/ai-answer')) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const question = url.searchParams.get('q');
+    if (!question) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing question' }));
+      return;
+    }
+    try {
+      const answer = await callDeepSeek(
+        `Answer concisely and clearly: ${question}`
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ answer }));
+    } catch (err) {
+      console.error('AI answer error', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'AI request failed' }));
+    }
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
 
 const io = new Server(httpServer, {
   cors: {

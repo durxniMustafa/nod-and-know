@@ -6,6 +6,7 @@ interface ChatMessage {
   timestamp: Date;
   userId: string;
   username: string;
+  followUp?: string[];
 }
 
 interface WebSocketServiceCallbacks {

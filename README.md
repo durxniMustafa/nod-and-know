@@ -1,7 +1,7 @@
 # Nod & Know
 
 Nod & Know is an interactive security awareness demo. It uses your webcam to detect nodding for **yes** and shaking for **no** while you answer short security questions. Votes are stored in your browser and you can join an anonymous chat to discuss each question.
-Messages that begin with `@ai` will summon an automated assistant powered by DeepSeek to provide more information about the current topic.
+Messages that begin with `@ai` will summon an automated assistant powered by DeepSeek to provide more information about the current topic. Answers include a couple of suggested follow-up questions to keep the discussion going.
 
 ## Getting Started
 

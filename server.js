@@ -2,9 +2,9 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
-// Simple wrapper to call DeepSeek's chat API
-async function callDeepSeek(prompt) {
-  const apiKey = "sk-ec21af60d61d4325a27680ce6721f4f2"
+// Simple wrapper to call DeepSeek's chat API with context messages
+async function callDeepSeek(messages) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY environment variable not set');
   }
@@ -17,7 +17,7 @@ async function callDeepSeek(prompt) {
     },
     body: JSON.stringify({
       model: 'deepseek-chat',
-      messages: [{ role: 'user', content: prompt }],
+      messages,
     }),
   });
 
@@ -27,10 +27,23 @@ async function callDeepSeek(prompt) {
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || '';
+  const content = data.choices?.[0]?.message?.content?.trim() || '';
+
+  try {
+    const parsed = JSON.parse(content);
+    return {
+      answer: parsed.answer || '',
+      followUp: Array.isArray(parsed.follow_up) ? parsed.follow_up : [],
+    };
+  } catch {
+    return { answer: content, followUp: [] };
+  }
 }
 
 const httpServer = createServer();
+
+// Store recent chat history per room for better AI context
+const chatHistory = {};
 
 const io = new Server(httpServer, {
   cors: {
@@ -58,14 +71,28 @@ io.on('connection', (socket) => {
     };
     io.to(roomId).emit('message', payload);
 
+    // Track conversation history for AI context
+    if (!chatHistory[roomId]) chatHistory[roomId] = [];
+    chatHistory[roomId].push({ role: 'user', content: text });
+    chatHistory[roomId] = chatHistory[roomId].slice(-10);
+
     if (text.trim().startsWith('@ai')) {
-      const prompt = text.replace(/^@ai\s*/, '') ||
+      const userPrompt = text.replace(/^@ai\s*/, '') ||
         `Tell me more about: ${socket.data.topic || ''}`;
       try {
-        const reply = await callDeepSeek(prompt);
+        const history = chatHistory[roomId] || [];
+        const messages = [
+          { role: 'system', content: 'You are a helpful security assistant. Answer the user question concisely and provide two short follow-up questions in JSON: {"answer": "...", "follow_up": ["q1", "q2"]}' },
+          ...history,
+          { role: 'user', content: userPrompt },
+        ];
+        const reply = await callDeepSeek(messages);
+        chatHistory[roomId].push({ role: 'assistant', content: reply.answer });
+        chatHistory[roomId] = chatHistory[roomId].slice(-10);
         const aiPayload = {
           id: Date.now().toString() + '_ai',
-          text: reply,
+          text: reply.answer,
+          followUp: reply.followUp,
           timestamp: new Date().toISOString(),
           userId: 'deepseek',
           username: 'AI Assistant',

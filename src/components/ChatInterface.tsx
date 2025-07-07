@@ -58,7 +58,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
-      text: isMobileQRMode 
+      text: isMobileQRMode
         ? `Welcome to the mobile discussion, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`
         : `Welcome, ${currentUserName}! Share your security experiences and learn from others. All conversations are anonymous.`,
       timestamp: new Date(),
@@ -66,7 +66,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       username: 'SecureMatch'
     };
 
-    setMessages([topicMessage, welcomeMessage]);
+    const aiHintMessage: ChatMessage = {
+      id: 'ai_hint',
+      text: 'Hint: start a message with @ai to ask our AI assistant.',
+      timestamp: new Date(),
+      userId: 'system',
+      username: 'SecureMatch'
+    };
+
+    setMessages([topicMessage, welcomeMessage, aiHintMessage]);
 
     // Connect to WebSocket
     websocketService.connect({
@@ -305,6 +313,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       }`}
                     >
                       <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                      {message.followUp && message.followUp.length > 0 && (
+                        <ul className="mt-2 list-disc list-inside space-y-1 text-sm">
+                          {message.followUp.map((q, idx) => (
+                            <li key={idx}>{q}</li>
+                          ))}
+                        </ul>
+                      )}
                       <div className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
@@ -325,7 +340,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Enter your message"
+                  placeholder="Enter your message (use @ai for help)"
                   disabled={!isConnected}
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 rounded-lg px-3 md:px-4 py-2 md:py-3 text-sm md:text-base"
                   maxLength={500}

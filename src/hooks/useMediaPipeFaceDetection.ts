@@ -78,7 +78,8 @@ export const useMediaPipeFaceDetection = (
   const lastFpsTimeRef = useRef(performance.now());
 
   // Throttle detection to ~10 fps
-  const DETECTION_INTERVAL = 100; // ms
+  const DETECTION_INTERVAL = 40; // ms (for ~25 FPS)
+
   const lastDetectionTimeRef = useRef(performance.now());
 
   // Face tracking for stable IDs

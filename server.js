@@ -32,7 +32,7 @@ function log(type, message, data = '') {
 
 // Simple wrapper to call DeepSeek's chat API with context messages
 async function callDeepSeek(messages) {
-  const apiKey = process.env.DEEPSEEK_API_KEY || "sk-0111758283f14f929f46bcb481cf9d7b";
+  const apiKey = process.env.DEEPSEEK_API_KEY || "sk-68df5077e3264402b50a293e4f5b82da";
   if (!apiKey) {
     throw new Error('DeepSeek API key not configured. Please set DEEPSEEK_API_KEY environment variable.');
   }

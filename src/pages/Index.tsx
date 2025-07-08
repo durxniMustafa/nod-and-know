@@ -86,9 +86,14 @@ const Index = () => {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [qrRoomId, setQrRoomId] = useState<string | null>(null);
   const [qrTopic, setQrTopic] = useState<string | null>(null);
+
+  const [nodThreshold, setNodThreshold] = useState(0.04);
+  const [shakeThreshold, setShakeThreshold] = useState(0.06);
+
   const [localIP, setLocalIP] = useState<string>('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [aiAnswer, setAiAnswer] = useState<string>('');
+
   
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
@@ -359,6 +364,130 @@ const Index = () => {
             </div>
           </div>
 
+
+        {isCooldown ? (
+          <CooldownDisplay
+            recommended={RECOMMENDED_ANSWERS[currentQuestion]}
+            remaining={cooldownRemaining}
+          />
+        ) : (
+          <QuestionDisplay
+            question={SECURITY_QUESTIONS[currentQuestion]}
+            questionIndex={currentQuestion + 1}
+            totalQuestions={SECURITY_QUESTIONS.length}
+            timeRemaining={timeRemaining}
+            questionDuration={QUESTION_DURATION_MS / 1000}
+          />
+        )}
+
+        {/* Threshold Slider Controls */}
+        <div className="flex gap-8 mb-6">
+          <div>
+            <label className="block text-sm text-white mb-1">
+              Nicken Threshold: {nodThreshold}
+            </label>
+            <input
+              type="range"
+              min="0.01"
+              max="0.15"
+              step="0.005"
+              value={nodThreshold}
+              onChange={e => setNodThreshold(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-white mb-1">
+              Kopfschütteln Threshold: {shakeThreshold}
+            </label>
+            <input
+              type="range"
+              min="0.01"
+              max="0.15"
+              step="0.005"
+              value={shakeThreshold}
+              onChange={e => setShakeThreshold(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Webcam + Controls */}
+          <div className="lg:col-span-2">
+            <Card className="bg-black/50 border-gray-700 p-6">
+              <div className="mb-4">
+                <h2 className="text-2xl font-semibold text-white mb-2">
+                  Interactive Feed
+                </h2>
+                <p className="text-gray-300 text-sm">
+                  {fallbackMode
+                    ? "Scan QR code below to join the discussion"
+                    : "Nod for YES • Shake for NO"
+                  }
+                </p>
+              </div>
+
+              <WebcamFeed
+                onGestureDetected={handleGestureDetected}
+                onFaceData={handleFaceData}
+                onConflictPair={handleConflictPair}
+                fallbackMode={fallbackMode}
+                debugMode={debugMode}
+                questionId={currentQuestion}
+                nodThreshold={nodThreshold}
+                shakeThreshold={shakeThreshold}
+              />
+
+              {/* Dev Controls */}
+              <div className="mt-4 flex gap-2 justify-center flex-wrap">
+                <Button
+                  onClick={() => handleTestVote('yes')}
+                  className="bg-green-600 hover:bg-green-700"
+                  size="sm"
+                >
+                  Test YES
+                </Button>
+                <Button
+                  onClick={() => handleTestVote('no')}
+                  className="bg-red-600 hover:bg-red-700"
+                  size="sm"
+                >
+                  Test NO
+                </Button>
+                <Button
+                  onClick={() => setFallbackMode(f => !f)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Toggle Fallback
+                </Button>
+                <Button
+                  onClick={handleClearData}
+                  variant="outline"
+                  size="sm"
+                  className="text-yellow-400 border-yellow-400"
+                >
+                  Clear Data
+                </Button>
+                <Button
+                  onClick={handleExportData}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-400 border-blue-400"
+                >
+                  Export Data
+                </Button>
+                <Button
+                  onClick={() => setDebugMode(d => !d)}
+                  variant="outline"
+                  size="sm"
+                  className="text-purple-400 border-purple-400"
+                >
+                  {debugMode ? 'Hide Debug' : 'Show Debug'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
           {isCooldown ? (
             <CooldownDisplay
               recommended={RECOMMENDED_ANSWERS[currentQuestion]}
@@ -374,6 +503,7 @@ const Index = () => {
               aiAnswer={aiAnswer}
             />
           )}
+
 
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Webcam + Controls */}

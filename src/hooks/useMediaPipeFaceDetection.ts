@@ -58,7 +58,9 @@ export const useMediaPipeFaceDetection = (
   onConflictPair?: (pair: { yes: FaceData; no: FaceData }) => void,
   enabled: boolean = true,
   drawFaceBoxes: boolean = true,
-  questionId?: number
+  questionId?: number,
+  nodThreshold: number = 0.01, //old 0.04,
+  shakeThreshold: number = 0.01, //old 0.06
 ): FaceDetectionResult => {
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
@@ -94,6 +96,9 @@ export const useMediaPipeFaceDetection = (
   const lastGesturePerFaceRef = useRef<Record<number, 'yes' | 'no' | null>>({});
   const preparingRef = useRef(false);
   const lastConflictTimeRef = useRef(0);
+  const directionChangeCountRef = useRef<Record<number, { x: number; y: number }> >({});
+  const lastDirectionRef = useRef<Record<number, { x: number; y: number }>>({});
+  const REQUIRED_DIRECTION_CHANGES = 2; // z.B. 2 Wechsel für eine echte Geste
 
   // Reset gesture history when question changes
   useEffect(() => {
@@ -114,8 +119,6 @@ export const useMediaPipeFaceDetection = (
   const REQUIRED_GESTURE_FRAMES = 6;
   const GESTURE_COOLDOWN_MS = 4000;
   const GESTURE_CONFIDENCE_THRESHOLD = 0.7;
-  const NOD_THRESHOLD = 0.04;
-  const SHAKE_THRESHOLD = 0.06;
 
   // -------------------------------
   // Face Tracking Functions
@@ -196,7 +199,7 @@ export const useMediaPipeFaceDetection = (
   // 2) detectGestureFromLandmarks
   // -------------------------------
   const detectGestureFromLandmarks = useCallback(
-    (landmarks: any[], faceId: number): GestureDetection | null => {
+    (landmarks: any[], faceId: number, rect: { width: number; height: number }): GestureDetection | null => {
       const noseTip = landmarks[4];
       if (!noseTip) return null;
 
@@ -205,29 +208,59 @@ export const useMediaPipeFaceDetection = (
       previousNosePositionRef.current[faceId] = currentPos;
       if (!prevPos) return null;
 
-      const deltaX = Math.abs(currentPos.x - prevPos.x);
-      const deltaY = Math.abs(currentPos.y - prevPos.y);
+      const deltaX = currentPos.x - prevPos.x;
+      const deltaY = currentPos.y - prevPos.y;
+
+      // Richtungswechsel zählen
+      if (!lastDirectionRef.current[faceId]) {
+        lastDirectionRef.current[faceId] = { x: 0, y: 0 };
+        directionChangeCountRef.current[faceId] = { x: 0, y: 0 };
+      }
+      // Horizontal
+      if (Math.sign(deltaX) !== 0 && Math.sign(deltaX) !== Math.sign(lastDirectionRef.current[faceId].x)) {
+        directionChangeCountRef.current[faceId].x += 1;
+        lastDirectionRef.current[faceId].x = deltaX;
+      }
+      // Vertikal
+      if (Math.sign(deltaY) !== 0 && Math.sign(deltaY) !== Math.sign(lastDirectionRef.current[faceId].y)) {
+        directionChangeCountRef.current[faceId].y += 1;
+        lastDirectionRef.current[faceId].y = deltaY;
+      }
+
+      // Dynamische Thresholds wie gehabt
+      const dynamicNodThreshold = nodThreshold * rect.width * 0.005;
+      const dynamicShakeThreshold = shakeThreshold * rect.width * 0.005;
 
       let gesture: 'yes' | 'no' | null = null;
       let confidence = 0;
 
       // Horizontal => "no"
-      if (deltaX > SHAKE_THRESHOLD && deltaX > deltaY * 1.2) {
+      if (
+        Math.abs(deltaX) > dynamicShakeThreshold &&
+        Math.abs(deltaX) > Math.abs(deltaY) * 1.2 &&
+        directionChangeCountRef.current[faceId].x >= REQUIRED_DIRECTION_CHANGES
+      ) {
         gesture = 'no';
-        confidence = Math.min(deltaX / (SHAKE_THRESHOLD * 2), 1);
+        confidence = Math.min(Math.abs(deltaX) / (dynamicShakeThreshold * 2), 1);
+        directionChangeCountRef.current[faceId].x = 0; // Reset nach Erkennung
       }
       // Vertical => "yes"
-      else if (deltaY > NOD_THRESHOLD && deltaY > deltaX * 1.2) {
+      else if (
+        Math.abs(deltaY) > dynamicNodThreshold &&
+        Math.abs(deltaY) > Math.abs(deltaX) * 1.2 &&
+        directionChangeCountRef.current[faceId].y >= REQUIRED_DIRECTION_CHANGES
+      ) {
         gesture = 'yes';
-        confidence = Math.min(deltaY / (NOD_THRESHOLD * 2), 1);
+        confidence = Math.min(Math.abs(deltaY) / (dynamicNodThreshold * 2), 1);
+        directionChangeCountRef.current[faceId].y = 0; // Reset nach Erkennung
       }
 
       if (gesture && confidence > GESTURE_CONFIDENCE_THRESHOLD) {
-        return { gesture, confidence, deltaX, deltaY };
+        return { gesture, confidence, deltaX: Math.abs(deltaX), deltaY: Math.abs(deltaY) };
       }
-      return { gesture: null, confidence, deltaX, deltaY };
+      return { gesture: null, confidence, deltaX: Math.abs(deltaX), deltaY: Math.abs(deltaY) };
     },
-    [NOD_THRESHOLD, SHAKE_THRESHOLD, GESTURE_CONFIDENCE_THRESHOLD]
+    [nodThreshold, shakeThreshold, GESTURE_CONFIDENCE_THRESHOLD]
   );
 
   // -------------------------------
@@ -319,7 +352,7 @@ export const useMediaPipeFaceDetection = (
           // Get stable face ID
           const faceId = getStableFaceId(landmarks, canvas.width, canvas.height);
           
-          const gestureResult = detectGestureFromLandmarks(landmarks, faceId);
+          const gestureResult = detectGestureFromLandmarks(landmarks, faceId, computeFaceRect(landmarks, canvas.width, canvas.height));
           if (gestureResult) {
             if (!gestureHistoryMapRef.current[faceId]) gestureHistoryMapRef.current[faceId] = [];
             if (gestureResult.gesture) {

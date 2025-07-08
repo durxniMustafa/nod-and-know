@@ -21,6 +21,26 @@ interface HeadPose {
   roll: number;
 }
 
+interface ExtendedFaceData {
+  id: number;
+  rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  nose: {
+    x: number;
+    y: number;
+  };
+  deltaX: number;
+  deltaY: number;
+  gesture?: string;
+  confidence: number;
+  isInCooldown?: boolean;
+  headPose?: HeadPose;
+}
+
 const WebcamFeed: React.FC<WebcamFeedProps> = ({
   onGestureDetected,
   onFaceData,
@@ -64,8 +84,14 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   // Report face data + track head pose
   useEffect(() => {
     onFaceData(faces, fps);
-    if (faces.length > 0 && faces[0]?.headPose) {
-      setHeadPoseData(faces[0].headPose as HeadPose);
+    
+    if (faces.length > 0) {
+      const firstFace = faces[0] as ExtendedFaceData;
+      if (firstFace && 'headPose' in firstFace && firstFace.headPose) {
+        setHeadPoseData(firstFace.headPose);
+      } else {
+        setHeadPoseData(null);
+      }
     } else {
       setHeadPoseData(null);
     }
@@ -107,6 +133,10 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     );
   }
 
+  const hasCooldownProperty = (face: any): face is { isInCooldown: boolean } => {
+    return face && typeof face.isInCooldown === 'boolean';
+  };
+
   // Render camera + overlays
   return (
     <div className="relative">
@@ -145,14 +175,14 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
               >
                 <div>Face {face.id}</div>
                 <div>
-                  Rect: {face.rect.x.toFixed(0)}, {face.rect.y.toFixed(0)}, 
-                  {face.rect.width.toFixed(0)}x{face.rect.height.toFixed(0)}
+                  Rect: {face.rect?.x?.toFixed(0) ?? 'N/A'}, {face.rect?.y?.toFixed(0) ?? 'N/A'}, 
+                  {face.rect?.width?.toFixed(0) ?? 'N/A'}x{face.rect?.height?.toFixed(0) ?? 'N/A'}
                 </div>
-                <div>Nose: {face.nose.x.toFixed(2)}, {face.nose.y.toFixed(2)}</div>
-                <div>Δx: {face.deltaX.toFixed(3)} Δy: {face.deltaY.toFixed(3)}</div>
+                <div>Nose: {face.nose?.x?.toFixed(2) ?? 'N/A'}, {face.nose?.y?.toFixed(2) ?? 'N/A'}</div>
+                <div>Δx: {face.deltaX?.toFixed(3) ?? 'N/A'} Δy: {face.deltaY?.toFixed(3) ?? 'N/A'}</div>
                 {face.gesture && (
                   <div>
-                    Gesture: {face.gesture} ({face.confidence.toFixed(2)})
+                    Gesture: {face.gesture} ({face.confidence?.toFixed(2) ?? 'N/A'})
                   </div>
                 )}
               </div>
@@ -239,7 +269,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        {faces.some(face => face.isInCooldown) && (
+        {faces.some(face => hasCooldownProperty(face) && face.isInCooldown) && (
           <div className="text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-900/20 border border-yellow-600 rounded-lg">
               <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />

@@ -7,7 +7,6 @@ import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
 import InfoDisplay from '@/components/InfoDisplay';
-import CooldownDisplay from '@/components/CooldownDisplay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
@@ -415,6 +414,9 @@ const Index = () => {
                       Talk to the person with the same number!
                       <br />
                       Did you ask yourself: ...?
+                      <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
+                        {RECOMMENDED_ANSWERS[currentQuestion]}
+                      </span>
                     </p>
                   </div>
                 </div>

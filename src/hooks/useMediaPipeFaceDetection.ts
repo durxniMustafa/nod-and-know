@@ -369,30 +369,71 @@ export const useMediaPipeFaceDetection = (
           const timeSinceGesture = now - (lastGestureTimeMapRef.current[faceId] || 0);
           const isInCooldown = timeSinceGesture < GESTURE_COOLDOWN_MS;
 
-          if (drawFaceBoxes) {
-            const fade = isInCooldown
-              ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
-              : 1;
+          // if (drawFaceBoxes) {
+          //   const fade = isInCooldown
+          //     ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
+          //     : 1;
             
-            // Get color based on this specific face's last gesture
-            let color = '128,128,128'; // Default gray
-            const persistentGesture = lastGesturePerFaceRef.current[faceId];
-            if (persistentGesture === 'yes') color = '0,255,0'; // Green for yes
-            else if (persistentGesture === 'no') color = '255,0,0'; // Red for no
+          //   // Get color based on this specific face's last gesture
+          //   let color = '128,128,128'; // Default gray
+          //   const persistentGesture = lastGesturePerFaceRef.current[faceId];
+          //   if (persistentGesture === 'yes') color = '0,255,0'; // Green for yes
+          //   else if (persistentGesture === 'no') color = '255,0,0'; // Red for no
 
-            ctx.save();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = `rgba(${color},${fade})`;
-            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+          //   ctx.save();
+          //   ctx.lineWidth = 3;
+          //   ctx.strokeStyle = `rgba(${color},${fade})`;
+          //   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
             
-            // Add username label
-            ctx.fillStyle = `rgba(${color},${fade})`;
-            ctx.font = '16px Arial';
-            const name = usernameMapRef.current[faceId] || `User ${faceId}`;
-            ctx.fillText(name, rect.x, rect.y - 5);
+          //   // Add username label
+          //   ctx.fillStyle = `rgba(${color},${fade})`;
+          //   ctx.font = '16px Arial';
+          //   const name = usernameMapRef.current[faceId] || `User ${faceId}`;
+          //   ctx.fillText(name, rect.x, rect.y - 5);
             
-            ctx.restore();
+          //   ctx.restore();
+          // }
+
+                   // Kreisgröße dynamisch bestimmen (z.B. 40% der Gesichtbreite, Mindestgröße 12, Maximalgröße 60)
+          const minRadius = 20;
+          const maxRadius = 60;
+          const dynamicRadius = Math.max(
+            minRadius,
+            Math.min(maxRadius, rect.width * 0.3)
+          );
+
+          // Kopf-Mitte bestimmen (z.B. Landmark 10 = Stirn, oder 4 = Nase)
+          const headLandmark = landmarks[10] || landmarks[4];
+          const cx = headLandmark.x * canvas.width;
+          const cy = headLandmark.y * canvas.height - dynamicRadius - 15; // Abstand über dem Kopf
+
+          // Status bestimmen
+          let circleColor = 'rgba(128,128,128,0.8)'; // grau
+          let symbol = '?';
+          const persistentGesture = lastGesturePerFaceRef.current[faceId];
+          if (persistentGesture === 'yes') {
+            circleColor = 'rgba(0,200,0,0.85)'; // grün
+            symbol = '\u2713'; // U+2713: ✓ (Haken)
+          } else if (persistentGesture === 'no') {
+            circleColor = 'rgba(200,0,0,0.85)'; // rot
+            symbol = '\u2717'; // U+2717: ✗ (Kreuz)
           }
+
+          // Kreis zeichnen
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, dynamicRadius, 0, 2 * Math.PI);
+          ctx.fillStyle = circleColor;
+          ctx.fill();
+          ctx.closePath();
+
+          // Symbol zeichnen
+          ctx.font = `bold ${Math.round(dynamicRadius * 1.2)}px Arial`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#fff';
+          ctx.fillText(symbol, cx, cy + 2);
+          ctx.restore();
 
           return {
             id: faceId,

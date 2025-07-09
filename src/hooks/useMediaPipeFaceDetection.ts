@@ -61,6 +61,7 @@ export const useMediaPipeFaceDetection = (
   questionId?: number,
   nodThreshold: number = 0.01, //old 0.04,
   shakeThreshold: number = 0.01, //old 0.06
+  phase: 'question' | 'results' = 'question',
 ): FaceDetectionResult => {
   const [result, setResult] = useState<FaceDetectionResult>({
     faces: [],
@@ -78,7 +79,7 @@ export const useMediaPipeFaceDetection = (
   const lastFpsTimeRef = useRef(performance.now());
 
   // Throttle detection to ~10 fps
-  const DETECTION_INTERVAL = 40; // ms (for ~25 FPS)
+  const DETECTION_INTERVAL = 40 // ms (for ~25 FPS)
 
   const lastDetectionTimeRef = useRef(performance.now());
 
@@ -87,8 +88,8 @@ export const useMediaPipeFaceDetection = (
   const nextFaceIdRef = useRef(1);
   const usernameMapRef = useRef<Record<number, string>>({});
   const nextNameIndexRef = useRef(0);
-  const FACE_TRACKING_THRESHOLD = 100; // pixels
-  const FACE_TIMEOUT_MS = 2000; // Remove faces not seen for 2 seconds
+  const FACE_TRACKING_THRESHOLD = 100 // pixels
+  const FACE_TIMEOUT_MS = 2000 // Remove faces not seen for 2 seconds
 
   // Gesture detection accumulators per face
   const previousNosePositionRef = useRef<Record<number, { x: number; y: number }>>({});
@@ -369,72 +370,6 @@ export const useMediaPipeFaceDetection = (
           const timeSinceGesture = now - (lastGestureTimeMapRef.current[faceId] || 0);
           const isInCooldown = timeSinceGesture < GESTURE_COOLDOWN_MS;
 
-          // if (drawFaceBoxes) {
-          //   const fade = isInCooldown
-          //     ? 1 - timeSinceGesture / GESTURE_COOLDOWN_MS
-          //     : 1;
-            
-          //   // Get color based on this specific face's last gesture
-          //   let color = '128,128,128'; // Default gray
-          //   const persistentGesture = lastGesturePerFaceRef.current[faceId];
-          //   if (persistentGesture === 'yes') color = '0,255,0'; // Green for yes
-          //   else if (persistentGesture === 'no') color = '255,0,0'; // Red for no
-
-          //   ctx.save();
-          //   ctx.lineWidth = 3;
-          //   ctx.strokeStyle = `rgba(${color},${fade})`;
-          //   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-            
-          //   // Add username label
-          //   ctx.fillStyle = `rgba(${color},${fade})`;
-          //   ctx.font = '16px Arial';
-          //   const name = usernameMapRef.current[faceId] || `User ${faceId}`;
-          //   ctx.fillText(name, rect.x, rect.y - 5);
-            
-          //   ctx.restore();
-          // }
-
-                   // Kreisgröße dynamisch bestimmen (z.B. 40% der Gesichtbreite, Mindestgröße 12, Maximalgröße 60)
-          const minRadius = 20;
-          const maxRadius = 60;
-          const dynamicRadius = Math.max(
-            minRadius,
-            Math.min(maxRadius, rect.width * 0.3)
-          );
-
-          // Kopf-Mitte bestimmen (z.B. Landmark 10 = Stirn, oder 4 = Nase)
-          const headLandmark = landmarks[10] || landmarks[4];
-          const cx = headLandmark.x * canvas.width;
-          const cy = headLandmark.y * canvas.height - dynamicRadius - 15; // Abstand über dem Kopf
-
-          // Status bestimmen
-          let circleColor = 'rgba(128,128,128,0.8)'; // grau
-          let symbol = '?';
-          const persistentGesture = lastGesturePerFaceRef.current[faceId];
-          if (persistentGesture === 'yes') {
-            circleColor = 'rgba(0,200,0,0.85)'; // grün
-            symbol = '\u2713'; // U+2713: ✓ (Haken)
-          } else if (persistentGesture === 'no') {
-            circleColor = 'rgba(200,0,0,0.85)'; // rot
-            symbol = '\u2717'; // U+2717: ✗ (Kreuz)
-          }
-
-          // Kreis zeichnen
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(cx, cy, dynamicRadius, 0, 2 * Math.PI);
-          ctx.fillStyle = circleColor;
-          ctx.fill();
-          ctx.closePath();
-
-          // Symbol zeichnen
-          ctx.font = `bold ${Math.round(dynamicRadius * 1.2)}px Arial`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#fff';
-          ctx.fillText(symbol, cx, cy + 2);
-          ctx.restore();
-
           return {
             id: faceId,
             landmarks,
@@ -461,34 +396,121 @@ export const useMediaPipeFaceDetection = (
           processGestureHistory(face.id);
         });
 
-        // Handle conflict detection between faces with different votes
-        const yesFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'yes');
-        const noFaces = newFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'no');
+        // Gruppierung der Gesichter (nur gültige Votes)
+        function buildGroups(
+          faces: FaceData[],
+          maxGroupSize = 4
+        ): Record<number, number> {
+          // Nur Gesichter mit gültigem Vote aus dem Ref!
+          const votedFaces = faces.filter(f => {
+            const g = lastGesturePerFaceRef.current[f.id];
+            return g === 'yes' || g === 'no';
+          });
+          const noFaces = votedFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'no');
+          const yesFaces = votedFaces.filter(f => lastGesturePerFaceRef.current[f.id] === 'yes');
 
-        if (yesFaces.length && noFaces.length) {
-          // Draw connection lines between conflicting faces
-          yesFaces.forEach(yf => {
-            noFaces.forEach(nf => {
-              ctx.save();
-              ctx.strokeStyle = 'cyan';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.moveTo(yf.rect.x + yf.rect.width / 2, yf.rect.y + yf.rect.height / 2);
-              ctx.lineTo(nf.rect.x + nf.rect.width / 2, nf.rect.y + nf.rect.height / 2);
-              ctx.stroke();
-              ctx.restore();
+          // Ziel: Gruppen möglichst gleich groß, "no" gleichmäßig verteilen
+          const total = votedFaces.length;
+          const numGroups = Math.max(1, Math.ceil(total / maxGroupSize));
+          const groups: FaceData[][] = Array.from({ length: numGroups }, () => []);
+
+          // 1. "no"-Votes rundlaufend auf Gruppen verteilen
+          let noIdx = 0;
+          noFaces.forEach(face => {
+            groups[noIdx % numGroups].push(face);
+            noIdx++;
+          });
+
+          // 2. "yes"-Votes auffüllen, sodass Gruppen möglichst gleich groß werden
+          let yesIdx = 0;
+          let groupFillIdx = 0;
+          while (yesIdx < yesFaces.length) {
+            while (groups[groupFillIdx % numGroups].length >= maxGroupSize) {
+              groupFillIdx++;
+            }
+            groups[groupFillIdx % numGroups].push(yesFaces[yesIdx]);
+            yesIdx++;
+            groupFillIdx++;
+          }
+
+          // 3. Mappe faceId → groupNummer
+          const groupMap: Record<number, number> = {};
+          groups.forEach((group, idx) => {
+            group.forEach(face => {
+              groupMap[face.id] = idx + 1; // Gruppen-Nummer ab 1
             });
           });
 
-          // Trigger conflict callback with rate limiting
-          if (onConflictPair) {
-            const nowTime = performance.now();
-            if (nowTime - lastConflictTimeRef.current > GESTURE_COOLDOWN_MS) {
-              lastConflictTimeRef.current = nowTime;
-              onConflictPair({ yes: yesFaces[0], no: noFaces[0] });
-            }
-          }
+          return groupMap;
         }
+        
+        const groupMap = buildGroups(newFaces, 4);
+
+        // Zeichnen
+        newFaces.forEach(face => {
+          // Kreisgröße dynamisch bestimmen
+          const minRadius = 20;
+          const maxRadius = 60;
+          const dynamicRadius = Math.max(
+            minRadius,
+            Math.min(maxRadius, face.rect.width * 0.3)
+          );
+
+          // Kopf-Mitte bestimmen
+          const headLandmark = face.landmarks[10] || face.landmarks[4];
+          const cx = headLandmark.x * canvas.width;
+          const cy = headLandmark.y * canvas.height - dynamicRadius - 15;
+
+          const gesture = lastGesturePerFaceRef.current[face.id];
+
+            if (phase === 'results') {
+            // Nur für gültige Votes zeichnen
+            if (gesture === 'yes' || gesture === 'no') {
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(cx, cy, dynamicRadius, 0, 2 * Math.PI);
+              ctx.fillStyle = '#80319F'; // lila Kreis
+              ctx.fill();
+              ctx.closePath();
+
+              ctx.font = `bold ${Math.round(dynamicRadius * 1.2)}px Arial`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#fff'; // weiße Schrift
+              ctx.fillText(
+              groupMap[face.id] ? groupMap[face.id].toString() : '?',
+              cx,
+              cy + 2
+              );
+              ctx.restore();
+            }
+            // Sonst: nichts zeichnen!
+            } else {
+            // Nur in anderen Phasen: Haken/Kreuz/? zeichnen
+            let circleColor = 'rgba(128,128,128,0.8)';
+            let symbol = '?';
+            if (gesture === 'yes') {
+              circleColor = 'rgba(0,200,0,0.85)';
+              symbol = '\u2713';
+            } else if (gesture === 'no') {
+              circleColor = 'rgba(200,0,0,0.85)';
+              symbol = '\u2717';
+            }
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, dynamicRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = circleColor;
+            ctx.fill();
+            ctx.closePath();
+
+            ctx.font = `bold ${Math.round(dynamicRadius * 1.2)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(symbol, cx, cy + 2);
+            ctx.restore();
+          }
+        });
       } else {
         setResult(prev => ({ ...prev, faces: [], isLoading: false }));
       }

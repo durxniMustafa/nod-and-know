@@ -12,6 +12,12 @@ import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
 
+export interface SecurityQuestionSet {
+  recommended: 'yes' | 'no';
+  question: string;
+  followUps: string[];
+}
+
 const SECURITY_INFOS = [
   "36% of Americans use a password manager.",
   "81% of data breaches are caused by weak or reused passwords.",
@@ -23,31 +29,96 @@ const SECURITY_INFOS = [
   "Think before you click: phishing emails can look very convincing."
 ];
 
-const SECURITY_QUESTIONS = [
-  "Do you reuse the same password across multiple accounts?",
-  "Have you enabled two-factor authentication on your main email?",
-  "Do you use your fingerprint to unlock your phone?",
-  "Would you click a link in an unexpected email from your bank?",
-  "Do you regularly update your software when prompted?",
-  "Would you connect to free public WiFi for online banking?",
-  "Do you backup your important files regularly?",
-  "Would you share your login credentials with a close friend?"
+const SECURITY_QUESTIONS: SecurityQuestionSet[] = [
+  {
+    recommended: 'no',
+    question: "Do you reuse the same password across multiple accounts?",
+    followUps: [
+      "What reasons do you have for not using a password more than once?",
+      "How do you deal with the challenge of having to remember many passwords?",
+      "Do you use a password manager or another system to manage them?",
+      "Have you (or someone you know) ever had problems because of password reuse?"
+    ]
+  },
+  {
+    recommended: 'yes',
+    question: "Have you enabled two-factor authentication on your main email?",
+    followUps: [
+      "What is 2FA?",
+      "Why is 2FA more secure?",
+      "What has stopped you (or motivated you) to enable 2FA?",
+      "Would you recommend 2FA to someone who is not very tech-savvy?"
+    ]
+  },
+  {
+    recommended: 'yes',
+    question: "Do you use your fingerprint to unlock your phone?",
+    followUps: [
+      "Do you feel safer or less safe with biometric unlocking – why?",
+      "Are there situations where you prefer a password over your fingerprint?",
+      "Do you have concerns about entrusting your biometric data to a device?",
+      "Do you think convenience plays a bigger role than security when choosing an unlocking method?"
+    ]
+  },
+  {
+    recommended: 'no',
+    question: "Would you click a link in an unexpected email from your bank?",
+    followUps: [
+      "How would you check if such an email is genuine?",
+      "Has this ever happened to you or someone you know?",
+      "How do you generally handle suspicious emails?",
+      ""
+    ]
+  },
+  {
+    recommended: 'yes',
+    question: "Do you regularly update your software when prompted?",
+    followUps: [
+      "What are the advantages or disadvantages of automatic updates for you?",
+      "Have you ever had problems after a software update?",
+      "How important do you think updates are in terms of security?",
+      "How do I update my devices?"
+    ]
+  },
+  {
+    recommended: 'no',
+    question: "Would you connect to free public WiFi for online banking?",
+    followUps: [
+      "What risks do you see in online banking over public WiFi?",
+      "Are there alternatives you use instead (e.g., mobile data)?",
+      "What would have to happen for you to feel safe using public WiFi?",
+      "Do you know of examples where public WiFi has caused problems?"
+    ]
+  },
+  {
+    recommended: 'yes',
+    question: "Do you backup your important files regularly?",
+    followUps: [
+      "How do you back up your files – locally, in the cloud, or both?",
+      "Have you ever lost data? What did you learn from it?",
+      "What prevents you (or motivates you) to make regular backups?",
+      "Which files are especially important to you – and why?"
+    ]
+  },
+  {
+    recommended: 'no',
+    question: "Would you share your login credentials with a close friend?",
+    followUps: [
+      "In what situations might you do this – or never do it?",
+      "What would be your biggest concern about giving someone your login details?",
+      "How do you handle shared accounts, e.g., for streaming services?",
+      "Do you think trust justifies such an action – or not?"
+    ]
+  }
 ];
 
-const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = [
-  'no',
-  'yes',
-  'yes',
-  'no',
-  'yes',
-  'no',
-  'yes',
-  'no'
-];
+const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = SECURITY_QUESTIONS.map(q => q.recommended);
 
-const Info_DURATION_MS = 5000; //15000;
-const QUESTION_DURATION_MS = 5000; //45000;
-const RESULTS_DURATION_MS = 5000; //60000;
+//Timers
+const Info_DURATION_MS = 10000; //10000;
+const QUESTION_DURATION_MS = 45000; //45000;
+const RESULTS_DURATION_MS = 90000; //90000;
+const FOLLOW_UP_INTERVAL_MS = 15000; //15000;
 
 const PHASES = {
   INFO: "info",
@@ -93,6 +164,7 @@ const getLocalIPAddress = async (): Promise<string> => {
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [currentInfo, setCurrentInfo] = useState(0);
+  const [currentFollowUpIndex, setCurrentFollowUpIndex] = useState(0);
   const [votes, setVotes] = useState({ yes: 0, no: 0 });
   const [isDiscussionOpen, setIsDiscussionOpen] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
@@ -108,8 +180,8 @@ const Index = () => {
   const [qrTopic, setQrTopic] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>(PHASES.INFO);
 
-  const [nodThreshold, setNodThreshold] = useState(0.04);
-  const [shakeThreshold, setShakeThreshold] = useState(0.06);
+  const [nodThreshold, setNodThreshold] = useState(0.05);
+  const [shakeThreshold, setShakeThreshold] = useState(0.04);
 
   const [localIP, setLocalIP] = useState<string>('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
@@ -125,8 +197,8 @@ const Index = () => {
       const ip = await getLocalIPAddress();
       setLocalIP(ip);
       
-      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion]).slice(0, 8)}`;
-      const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`;
+      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
+      const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
       
       // Use online QR code generation service
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
@@ -178,7 +250,7 @@ const Index = () => {
   // Fetch AI answer when question changes
   useEffect(() => {
     setAiAnswer('');
-    fetch(`/ai-answer?q=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`)
+    fetch(`/ai-answer?q=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`)
       .then(res => res.json())
       .then(data => setAiAnswer(data.answer))
       .catch(err => console.error('Failed to fetch AI answer', err));
@@ -198,6 +270,19 @@ const Index = () => {
       return () => clearInterval(t);
     }
   }, [phase, currentQuestion]);
+
+  // Follow-up Fragen Rotation
+  useEffect(() => {
+    setCurrentFollowUpIndex(0); // Reset bei Fragewechsel
+    const followUps = SECURITY_QUESTIONS[currentQuestion].followUps;
+    if (!followUps.length) return;
+    const interval = setInterval(() => {
+      setCurrentFollowUpIndex(prev =>
+        (prev + 1) % followUps.length
+      );
+    }, FOLLOW_UP_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [currentQuestion]);
 
     // Timer logic for phase transitions
   useEffect(() => {
@@ -332,9 +417,9 @@ const Index = () => {
   // Copy chat link to clipboard
   const copyToClipboard = async () => {
     if (localIP) {
-      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion]).slice(0, 8)}`;
-      const chatUrl = `http://${localIP}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`;
-      
+      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
+      const chatUrl = `http://${localIP}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
+
       try {
         await navigator.clipboard.writeText(chatUrl);
         toast('Chat link copied to clipboard!');
@@ -350,7 +435,7 @@ const Index = () => {
       {/* If accessed via QR code (mobile), show ONLY the chat interface */}
       {qrRoomId ? (
         <ChatInterface
-          question={qrTopic ?? SECURITY_QUESTIONS[currentQuestion]}
+          question={qrTopic ?? SECURITY_QUESTIONS[currentQuestion].question}
           onClose={() => {
             // For QR code access, "closing" means going to a thank you page
             // instead of showing the full website
@@ -397,26 +482,38 @@ const Index = () => {
               style={{ minHeight: '60vh', maxHeight: '85vh' }}
             >
               {/* QuestionDisplay nur in Question-Phase */}
-              {phase === PHASES.QUESTION && (
+              {/* {phase === PHASES.QUESTION && ( */}
                 <QuestionDisplay
-                  question={SECURITY_QUESTIONS[currentQuestion]}
+                  question={SECURITY_QUESTIONS[currentQuestion].question}
                   timeRemaining={timeRemaining}
                   questionDuration={QUESTION_DURATION_MS / 1000}
                   aiAnswer={aiAnswer}
+                  phase={phase}
                 />
-              )}
+              {/* )} */}
 
               {/* DiscussionCard nur in Results-Phase */}
               {phase === PHASES.RESULTS && (
                 <div className="mt-6 mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="mb-6">
                     <p className="text-gray-200 text-4xl leading-relaxed text-center">
-                      Talk to the person with the same number!
+                      {/* Talk to the person with the same number! */}
                       <br />
-                      Did you ask yourself: ...?
-                      <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
-                        {RECOMMENDED_ANSWERS[currentQuestion]}
-                      </span>
+                      
+                      {SECURITY_QUESTIONS[currentQuestion].followUps.length > 0 && (
+                        <div className="mt-4 text-lg text-purple-200 text-center">
+                          <p className="mb-2">
+                            The recommended answer is{' '}
+                            <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
+                              {RECOMMENDED_ANSWERS[currentQuestion]}
+                            </span>
+                            . Find the person with the same number and start a conversation! Ask them:
+                          </p>
+                          <div className="text-yellow-300 font-semibold">
+                            {SECURITY_QUESTIONS[currentQuestion].followUps[currentFollowUpIndex]}
+                          </div>
+                        </div>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -537,7 +634,7 @@ const Index = () => {
           {/* Chat Interface Modal - Only for desktop */}
           {isDiscussionOpen && (
             <ChatInterface
-              question={SECURITY_QUESTIONS[currentQuestion]}
+              question={SECURITY_QUESTIONS[currentQuestion].question}
               onClose={() => setIsDiscussionOpen(false)}
               isMobileQRMode={false}
             />

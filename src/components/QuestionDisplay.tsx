@@ -7,6 +7,7 @@ interface QuestionDisplayProps {
   timeRemaining: number;
   questionDuration: number;
   aiAnswer?: string;
+  phase: 'question' | 'results';
 }
 
 const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
@@ -14,6 +15,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   timeRemaining,
   questionDuration,
   aiAnswer,
+  phase
 }) => {
   return (
     <div>
@@ -24,14 +26,16 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         style={{ marginTop: '-50px' }}
       >
       </div>
-      <div className="mt-2 mb-8 w-full bg-gray-700 rounded-full h-1">
-        <div
-          className="bg-yellow-400 h-1 rounded-full transition-all duration-1000"
-          style={{ width: `${((questionDuration - timeRemaining) / questionDuration) * 100}%` }}
-        ></div>
-      </div>
+      {phase === 'question' && (
+        <div className="mt-2 mb-8 w-full bg-gray-700 rounded-full h-1">
+          <div
+            className="bg-yellow-400 h-1 rounded-full transition-all duration-1000"
+            style={{ width: `${((questionDuration - timeRemaining) / questionDuration) * 100}%` }}
+          ></div>
+        </div>
+      )}
 
-      <div className="mb-8 mt-20">
+      <div className="mb-0 mt-20">
         <p className="text-gray-200 text-4xl leading-relaxed text-center">
           {question}
         </p>

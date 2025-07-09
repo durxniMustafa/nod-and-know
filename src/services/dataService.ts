@@ -11,6 +11,7 @@ interface VoteData {
 interface SessionData {
   votes: Record<number, VoteData>;
   currentQuestion: number;
+  currentInfo: number;
   sessionStartTime: number;
   totalInteractions: number;
 }
@@ -57,6 +58,7 @@ class DataService {
     return {
       votes: {},
       currentQuestion: 0,
+      currentInfo: 0,
       sessionStartTime: Date.now(),
       totalInteractions: 0
     };
@@ -214,9 +216,20 @@ class DataService {
     return this.getSessionData().currentQuestion;
   }
 
+  // Info Management
+  getCurrentInfo(): number {
+    return this.getSessionData().currentInfo;
+  }
+
   setCurrentQuestion(questionId: number): void {
     const sessionData = this.getSessionData();
     sessionData.currentQuestion = questionId;
+    this.saveSessionData(sessionData);
+  }
+
+  setCurrentInfo(infoId: number): void {
+    const sessionData = this.getSessionData();
+    sessionData.currentInfo = infoId;
     this.saveSessionData(sessionData);
   }
 

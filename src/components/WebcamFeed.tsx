@@ -13,6 +13,7 @@ interface WebcamFeedProps {
   questionId: number;
   nodThreshold: number;
   shakeThreshold: number;
+  phase: 'question' | 'results';
 }
 
 interface HeadPose {
@@ -48,7 +49,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   fallbackMode,
   debugMode = false,
   showOutlines = true,
-  questionId
+  questionId,
+  phase
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -217,7 +219,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
 
       {/* Status/Instructions */}
       <div className="mt-4 space-y-3">
-        {!fallbackMode && (
+        {/* {!fallbackMode && (
           <div className="flex justify-center gap-4 text-sm mb-2">
             <div className="flex items-center gap-2">
               <div
@@ -238,7 +240,7 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
               <span className="text-gray-300">{Math.round(fps)} FPS</span>
             </div>
           </div>
-        )}
+        )} */}
 
         {!fallbackMode && headPoseData && faces.length > 0 && (
           <div className="text-center bg-gray-800 p-2 rounded-md mb-3 text-xs text-gray-300">
@@ -249,34 +251,19 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
           </div>
         )}
 
-        <div className="flex justify-center gap-8 text-base md:text-lg">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500 rounded-full" />
-            <span className="text-green-400">Nod = YES</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-500 rounded-full" />
-            <span className="text-red-400">Shake = NO</span>
-          </div>
-        </div>
-
-        {isPreparing && (
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-900/20 border border-blue-600 rounded-lg">
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-              <span className="text-blue-400 text-sm">Hold still to confirm...</span>
+        {phase === 'question' && (
+          <div className="flex justify-center gap-8 text-base md:text-lg">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-green-500 rounded-full" />
+              <span className="text-green-400">Nod for YES</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-red-500 rounded-full" />
+              <span className="text-red-400">Shake for NO</span>
             </div>
           </div>
         )}
-
-        {faces.some(face => hasCooldownProperty(face) && face.isInCooldown) && (
-          <div className="text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-900/20 border border-yellow-600 rounded-lg">
-              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-yellow-400 text-sm">Processing gesture...</span>
-            </div>
-          </div>
-        )}
+        
       </div>
     </div>
   );

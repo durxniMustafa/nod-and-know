@@ -6,11 +6,22 @@ import WebcamFeed from '@/components/WebcamFeed';
 import VoteChart from '@/components/VoteChart';
 import ChatInterface from '@/components/ChatInterface';
 import QuestionDisplay from '@/components/QuestionDisplay';
-import CooldownDisplay from '@/components/CooldownDisplay';
+import InfoDisplay from '@/components/InfoDisplay';
 import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
+
+const SECURITY_INFOS = [
+  "36% of Americans use a password manager.",
+  "81% of data breaches are caused by weak or reused passwords.",
+  "Only 10% of people use two-factor authentication on all accounts.",
+  "Public WiFi can expose your data to attackers—use a VPN for safety.",
+  "Regularly updating software helps protect against security vulnerabilities.",
+  "Back up your important files to avoid data loss from ransomware.",
+  "Never share your login credentials, even with close friends.",
+  "Think before you click: phishing emails can look very convincing."
+];
 
 const SECURITY_QUESTIONS = [
   "Do you reuse the same password across multiple accounts?",
@@ -34,8 +45,16 @@ const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = [
   'no'
 ];
 
-const QUESTION_DURATION_MS = 45000;
-const COOLDOWN_DURATION_MS = 20000;
+const Info_DURATION_MS = 5000; //15000;
+const QUESTION_DURATION_MS = 5000; //45000;
+const RESULTS_DURATION_MS = 5000; //60000;
+
+const PHASES = {
+  INFO: "info",
+  QUESTION: "question",
+  RESULTS: "results",
+} as const;
+type Phase = typeof PHASES[keyof typeof PHASES];
 
 // Function to get local IP address
 const getLocalIPAddress = async (): Promise<string> => {
@@ -73,6 +92,7 @@ const getLocalIPAddress = async (): Promise<string> => {
 
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [currentInfo, setCurrentInfo] = useState(0);
   const [votes, setVotes] = useState({ yes: 0, no: 0 });
   const [isDiscussionOpen, setIsDiscussionOpen] = useState(false);
   const [fallbackMode, setFallbackMode] = useState(false);
@@ -80,12 +100,13 @@ const Index = () => {
   const [fps, setFps] = useState(30);
   const [detectedFaces, setDetectedFaces] = useState([]);
   const [timeRemaining, setTimeRemaining] = useState(QUESTION_DURATION_MS / 1000);
-  const [cooldownRemaining, setCooldownRemaining] = useState(COOLDOWN_DURATION_MS / 1000);
+  const [timeRemainingInfo, setTimeRemainingInfo] = useState(Info_DURATION_MS / 1000);
   const [isCooldown, setIsCooldown] = useState(false);
   const [sessionStats, setSessionStats] = useState(dataService.getSessionStats());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [qrRoomId, setQrRoomId] = useState<string | null>(null);
   const [qrTopic, setQrTopic] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>(PHASES.INFO);
 
   const [nodThreshold, setNodThreshold] = useState(0.04);
   const [shakeThreshold, setShakeThreshold] = useState(0.06);
@@ -119,6 +140,10 @@ const Index = () => {
   }, [currentQuestion]);
 
   // On mount, load session data
+  //
+  //
+  //
+  //Hier hatte ich etwas gelöscht
   useEffect(() => {
     dataService.logAnalyticsEvent('session_start');
     const savedQuestion = dataService.getCurrentQuestion();
@@ -159,45 +184,56 @@ const Index = () => {
       .catch(err => console.error('Failed to fetch AI answer', err));
   }, [currentQuestion]);
 
-  // Question/Cooldown cycle
   useEffect(() => {
-    if (isCooldown) return;
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const remaining = Math.max(0, QUESTION_DURATION_MS - elapsed);
-      setTimeRemaining(Math.ceil(remaining / 1000));
-      if (remaining <= 0) {
-        setIsCooldown(true);
-      }
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [currentQuestion, isCooldown]);
+    if (phase === PHASES.QUESTION) {
+      setTimeRemaining(QUESTION_DURATION_MS / 1000);
+      const start = Date.now();
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const remaining = Math.max(0, QUESTION_DURATION_MS - elapsed);
+        setTimeRemaining(Math.ceil(remaining / 1000));
+      };
+      tick();
+      const t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }
+  }, [phase, currentQuestion]);
 
-  // Cooldown timer
+    // Timer logic for phase transitions
   useEffect(() => {
-    if (!isCooldown) return;
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const remaining = Math.max(0, COOLDOWN_DURATION_MS - elapsed);
-      setCooldownRemaining(Math.ceil(remaining / 1000));
-      if (remaining <= 0) {
+    let timeout: NodeJS.Timeout;
+    if (phase === PHASES.INFO) {
+      timeout = setTimeout(() => setPhase(PHASES.QUESTION), Info_DURATION_MS);
+    } else if (phase === PHASES.QUESTION) {
+      timeout = setTimeout(() => setPhase(PHASES.RESULTS), QUESTION_DURATION_MS);
+    } else if (phase === PHASES.RESULTS) {
+      timeout = setTimeout(() => {
+        // Next info, next question
+        const nextInfo = (currentInfo + 1) % SECURITY_INFOS.length;
+        setCurrentInfo(nextInfo);
         const nextQuestion = (currentQuestion + 1) % SECURITY_QUESTIONS.length;
         setCurrentQuestion(nextQuestion);
-        dataService.setCurrentQuestion(nextQuestion);
-        const questionVotes = dataService.getVotesForQuestion(nextQuestion);
-        setVotes(questionVotes);
-        setSessionStats(dataService.getSessionStats());
-        setIsCooldown(false);
-      }
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [isCooldown, currentQuestion]);
+        setPhase(PHASES.INFO);
+      }, RESULTS_DURATION_MS);
+    }
+    return () => clearTimeout(timeout);
+  }, [phase, currentInfo, currentQuestion]);
+
+  // Countdown timer for current info display
+  useEffect(() => {
+    if (phase === PHASES.INFO) {
+      setTimeRemainingInfo(Info_DURATION_MS / 1000);
+      const start = Date.now();
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const remaining = Math.max(0, Info_DURATION_MS - elapsed);
+        setTimeRemainingInfo(Math.ceil(remaining / 1000));
+      };
+      tick();
+      const t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }
+  }, [phase, currentInfo]);
 
   // Memoized Callback: handleGestureDetected
   const handleGestureDetected = useCallback((gesture: 'yes' | 'no', faceId: number) => {
@@ -264,6 +300,7 @@ const Index = () => {
     if (confirm('Clear all session data? This will reset votes and statistics.')) {
       dataService.clearSessionData();
       setVotes({ yes: 0, no: 0 });
+      setCurrentInfo(0);
       setCurrentQuestion(0);
       setSessionStats(dataService.getSessionStats());
       // Clear face vote tracking
@@ -309,7 +346,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen bg-[#80319F] p-4">
       {/* If accessed via QR code (mobile), show ONLY the chat interface */}
       {qrRoomId ? (
         <ChatInterface
@@ -326,271 +363,176 @@ const Index = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold text-white mb-4 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
-              SecureMatch
-            </h1>
-            <p className="text-xl text-gray-300 mb-2">
-              Production Gesture-Driven Security Dialogue
-            </p>
-            <div className="flex justify-center gap-4 text-sm text-gray-400 flex-wrap">
-              <Badge variant="outline" className="text-green-400 border-green-400">
-                FPS: {Math.round(fps)}
-              </Badge>
-              <Badge variant="outline" className="text-blue-400 border-blue-400">
-                Faces: {detectedFaces.length}
-              </Badge>
-              <Badge variant="outline" className="text-purple-400 border-purple-400">
-                Votes: {sessionStats.totalVotes}
-              </Badge>
-              <Badge variant="outline" className="text-yellow-400 border-yellow-400">
-                Session: {Math.round(sessionStats.sessionDuration / 1000 / 60)}m
-              </Badge>
-              <Badge variant="outline" className="text-orange-400 border-orange-400">
-                Q{currentQuestion + 1} Voters: {faceVotesRef.current[currentQuestion]?.size || 0}
-              </Badge>
-              {fallbackMode && (
-                <Badge variant="destructive">
-                  Fallback Mode
-                </Badge>
-              )}
-            </div>
-            <div className="mt-4 flex gap-2 justify-center">
-              <Button variant="outline" size="sm" onClick={() => setIsHelpOpen(true)}>
-                Help
-              </Button>
-              <Link to="/stats">
-                <Button variant="outline" size="sm">Stats</Button>
-              </Link>
-            </div>
+            <Card className="bg-black/50 px-4 py-2 inline-block border-0 shadow-none" style={{ marginTop: '-25px' }}>
+              <h1 className="text-gray-200 text-4xl leading-relaxed text-center">
+                SecureMatch
+              </h1>
+            </Card>
           </div>
 
-          {/* Question/Cooldown Display */}
+          {/* Info Phase */}
+          {phase === PHASES.INFO && (
+            <Card className="bg-black/50 border-0 p-6 mb-8">
+              <InfoDisplay
+                info={SECURITY_INFOS[currentInfo]}
+                timeRemainingInfo={timeRemainingInfo}
+                infoDuration={Info_DURATION_MS / 1000}
+              />
+            </Card>
+          )}
+
+          {/*Question/Cooldown Display
           {isCooldown ? (
             <CooldownDisplay
               recommended={RECOMMENDED_ANSWERS[currentQuestion]}
               remaining={cooldownRemaining}
             />
-          ) : (
-            <QuestionDisplay
-              question={SECURITY_QUESTIONS[currentQuestion]}
-              questionIndex={currentQuestion + 1}
-              totalQuestions={SECURITY_QUESTIONS.length}
-              timeRemaining={timeRemaining}
-              questionDuration={QUESTION_DURATION_MS / 1000}
-              aiAnswer={aiAnswer}
-            />
-          )}
+          ) */}
 
-          {/* Threshold Slider Controls */}
-          <div className="flex gap-8 mb-6">
-            <div>
-              <label className="block text-sm text-white mb-1">
-                Nicken Threshold: {nodThreshold}
-              </label>
-              <input
-                type="range"
-                min="0.01"
-                max="0.15"
-                step="0.005"
-                value={nodThreshold}
-                onChange={e => setNodThreshold(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-white mb-1">
-                Kopfschütteln Threshold: {shakeThreshold}
-              </label>
-              <input
-                type="range"
-                min="0.01"
-                max="0.15"
-                step="0.005"
-                value={shakeThreshold}
-                onChange={e => setShakeThreshold(Number(e.target.value))}
-              />
-            </div>
-          </div>
 
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Webcam + Controls */}
-            <div className="lg:col-span-2">
-              <Card className="bg-black/50 border-gray-700 p-6">
-                <div className="mb-4">
-                  <h2 className="text-2xl font-semibold text-white mb-2">
-                    Interactive Feed
-                  </h2>
-                  <p className="text-gray-300 text-sm">
-                    {fallbackMode
-                      ? "Welcome to the discussion!"
-                      : "Nod for YES • Shake for NO"
-                    }
-                  </p>
+          {/* Question/Results Display */}
+          {(phase === PHASES.QUESTION || phase === PHASES.RESULTS) && (
+            <Card
+              className="bg-black/50 border-0 p-6 mb-8 h-screen flex flex-col justify-start"
+              style={{ minHeight: '60vh', maxHeight: '85vh' }}
+            >
+              {/* QuestionDisplay nur in Question-Phase */}
+              {phase === PHASES.QUESTION && (
+                <QuestionDisplay
+                  question={SECURITY_QUESTIONS[currentQuestion]}
+                  timeRemaining={timeRemaining}
+                  questionDuration={QUESTION_DURATION_MS / 1000}
+                  aiAnswer={aiAnswer}
+                />
+              )}
+
+              {/* DiscussionCard nur in Results-Phase */}
+              {phase === PHASES.RESULTS && (
+                <div className="mt-6 mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="mb-6">
+                    <p className="text-gray-200 text-4xl leading-relaxed text-center">
+                      Talk to the person with the same number!
+                      <br />
+                      Did you ask yourself: ...?
+                      <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
+                        {RECOMMENDED_ANSWERS[currentQuestion]}
+                      </span>
+                    </p>
+                  </div>
                 </div>
+              )}
 
+              {/* WebcamFeed bleibt immer gemountet, Sichtbarkeit über Phase */}
+              <div className="block mt-4">
                 <WebcamFeed
                   onGestureDetected={handleGestureDetected}
                   onFaceData={handleFaceData}
-                  onConflictPair={handleConflictPair}
-                  fallbackMode={fallbackMode}
                   debugMode={debugMode}
                   questionId={currentQuestion}
+                  fallbackMode={fallbackMode}
                   nodThreshold={nodThreshold}
                   shakeThreshold={shakeThreshold}
+                  phase={phase}
                 />
+              </div>
 
-                {/* Dev Controls */}
-                <div className="mt-4 flex gap-2 justify-center flex-wrap">
-                  <Button
-                    onClick={() => handleTestVote('yes')}
-                    className="bg-green-600 hover:bg-green-700"
-                    size="sm"
-                  >
-                    Test YES
-                  </Button>
-                  <Button
-                    onClick={() => handleTestVote('no')}
-                    className="bg-red-600 hover:bg-red-700"
-                    size="sm"
-                  >
-                    Test NO
-                  </Button>
-                  <Button
-                    onClick={() => setFallbackMode(f => !f)}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Toggle Fallback
-                  </Button>
-                  <Button
-                    onClick={handleClearData}
-                    variant="outline"
-                    size="sm"
-                    className="text-yellow-400 border-yellow-400"
-                  >
-                    Clear Data
-                  </Button>
-                  <Button
-                    onClick={handleExportData}
-                    variant="outline"
-                    size="sm"
-                    className="text-blue-400 border-blue-400"
-                  >
-                    Export Data
-                  </Button>
-                  <Button
-                    onClick={() => setDebugMode(d => !d)}
-                    variant="outline"
-                    size="sm"
-                    className="text-purple-400 border-purple-400"
-                  >
-                    {debugMode ? 'Hide Debug' : 'Show Debug'}
-                  </Button>
-                </div>
-              </Card>
-            </div>
-
-            {/* Right: Results + QR Code + Discussion */}
-            <div className="space-y-6">
-              <VoteChart votes={votes} />
-
-              {/* QR Code Card */}
-              <Card className="bg-black/50 border-gray-700 p-6 text-center">
-                <h3 className="text-lg font-semibold text-white mb-4">📱 Join Discussion on Mobile</h3>
-                
-                {qrCodeUrl ? (
-                  <div className="space-y-4">
-                    <div className="flex justify-center">
-                      <img 
-                        src={qrCodeUrl} 
-                        alt="Scan to join chat" 
-                        className="bg-white p-2 rounded-lg shadow-lg"
-                        style={{ maxWidth: '200px', height: 'auto' }}
-                      />
-                    </div>
-                    
-                    <div className="text-sm text-gray-400">
-                      <p>Scan QR code with your phone</p>
-                      <p>Opens chat-only mobile experience</p>
-                    </div>
-                    
-                    {localIP && (
-                      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-                        <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
-                        <p className="text-xs text-green-400 font-mono break-all">
-                          http://{localIP}:8080
-                        </p>
-                        <Button
-                          onClick={copyToClipboard}
-                          variant="outline"
-                          size="sm"
-                          className="mt-2 text-xs"
-                        >
-                          Copy Link
-                        </Button>
+              {/* QR Code Card*/}
+              {phase === PHASES.RESULTS && (
+                <div className="mt-6 mb-8 flex flex-col lg:flex-row items-center justify-center gap-8">
+                  {/* Text */}
+                  <div className="flex-1">
+                    <h3 className="text-gray-200 text-2xl leading-relaxed text-center lg:text-left">
+                      Or anonymously stay in touch over the Chat by scanning the code!
+                    </h3>
+                  </div>
+                  {/* QR Code */}
+                  <div className="flex-1 flex justify-center">
+                    {qrCodeUrl ? (
+                      <div className="space-y-4">
+                        <div className="flex justify-center">
+                          <img
+                            src={qrCodeUrl}
+                            alt="Scan to join chat"
+                            className="bg-white p-2 rounded-lg shadow-lg"
+                            style={{ maxWidth: '200px', height: 'auto' }}
+                          />
+                        </div>
+                        {/* {localIP && (
+                          <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+                            <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
+                            <p className="text-xs text-green-400 font-mono break-all">
+                              http://{localIP}:8080
+                            </p>
+                            <Button
+                              onClick={copyToClipboard}
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 text-xs"
+                            >
+                              Copy Link
+                            </Button>
+                          </div>
+                        )} */}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                        <p className="text-gray-400">Generating QR code...</p>
                       </div>
                     )}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-                    <p className="text-gray-400">Generating QR code...</p>
-                  </div>
-                )}
-                
-                <p className="text-gray-400 text-xs mt-4">
-                  Anonymous chat • No registration required
-                </p>
-              </Card>
-
-              {/* Session Stats */}
-              <Card className="bg-black/50 border-gray-700 p-4">
-                <h3 className="text-lg font-semibold text-white mb-3">Session Stats</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Questions Answered:</span>
-                    <span className="text-white">{sessionStats.questionsAnswered}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Gestures Detected:</span>
-                    <span className="text-white">{sessionStats.gestureCount}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Chat Opened:</span>
-                    <span className="text-white">
-                      {sessionStats.chatOpened ? 'Yes' : 'No'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Current Q Faces:</span>
-                    <span className="text-white">
-                      {faceVotesRef.current[currentQuestion]?.size || 0}
-                    </span>
-                  </div>
-                  {localIP && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Local IP:</span>
-                      <span className="text-white text-xs">{localIP}</span>
-                    </div>
-                  )}
                 </div>
-                
-                {debugMode && (
-                  <div className="mt-4 pt-4 border-t border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-300 mb-2">Debug Info</h4>
-                    <div className="text-xs text-gray-400 space-y-1">
-                      <div>Detected Faces: {detectedFaces.map((f: any) => f.id).join(', ') || 'None'}</div>
-                      <div>Face Vote History:</div>
-                      {Object.entries(faceVotesRef.current).map(([qId, faceIds]) => (
-                        <div key={qId} className="ml-2">
-                          Q{parseInt(qId) + 1}: [{Array.from(faceIds as Set<number>).join(', ')}]
-                        </div>
-                      ))}
-                    </div>
+              )}
+            </Card>
+          )}
+
+          {/* Debug Mode */}
+          {debugMode && (
+            <div className="mt-4 pt-4 border-t border-gray-600">
+              <h4 className="text-sm font-semibold text-gray-300 mb-2">Debug Info</h4>
+              
+              <div className="text-xs text-gray-400 space-y-1">
+                <div>Detected Faces: {detectedFaces.map((f: any) => f.id).join(', ') || 'None'}</div>
+                <div>Face Vote History:</div>
+                {Object.entries(faceVotesRef.current).map(([qId, faceIds]) => (
+                  <div key={qId} className="ml-2">
+                    Q{parseInt(qId) + 1}: [{Array.from(faceIds as Set<number>).join(', ')}]
                   </div>
-                )}
-              </Card>
+                ))}
+              </div>
+
+              {/* Threshold Slider Controls */}
+              <div className="flex gap-8 mb-6">
+                <div>
+                  <label className="block text-sm text-white mb-1">
+                    Nicken Threshold: {nodThreshold}
+                  </label>
+                  <input
+                  type="range"
+                  min="0.01"
+                  max="0.15"
+                  step="0.005"
+                  value={nodThreshold}
+                  onChange={e => setNodThreshold(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-white mb-1">
+                    Kopfschütteln Threshold: {shakeThreshold}
+                  </label>
+                  <input
+                  type="range"
+                  min="0.01"
+                  max="0.15"
+                  step="0.005"
+                  value={shakeThreshold}
+                  onChange={e => setShakeThreshold(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
             </div>
-          </div>
+          )}
 
           {/* Chat Interface Modal - Only for desktop */}
           {isDiscussionOpen && (
@@ -601,7 +543,6 @@ const Index = () => {
             />
           )}
           
-          <HelpDialog open={isHelpOpen} onOpenChange={setIsHelpOpen} />
         </div>
       )}
     </div>

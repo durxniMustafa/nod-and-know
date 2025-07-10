@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Users, LogOut, Send, Smile } from 'lucide-react';
+import { FileText, Users, LogOut, Send, Smile, X,  Shield, CheckCircle, XCircle, AlertCircle, Loader2} from 'lucide-react';
 import { websocketService, ChatMessage } from '@/services/websocketService';
 import { dataService } from '@/services/dataService';
 
@@ -11,6 +12,17 @@ interface ChatInterfaceProps {
   onClose: () => void;
   roomId?: string;
   isMobileQRMode?: boolean;
+}
+
+interface FactCheckResult {
+  success: boolean;
+  status: 'verified' | 'partial' | 'unverified';
+  confidence: number;
+  is_supported: boolean;
+  formatted_response: string;
+  claim_results: any[];
+  sources: any[];
+  error?: string;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -24,6 +36,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [showUserList, setShowUserList] = useState(false);
+  const [factCheckLoading, setFactCheckLoading] = useState(false);
+  const [factCheckResult, setFactCheckResult] = useState<FactCheckResult | null>(null);
+  const [showFactCheckPopup, setShowFactCheckPopup] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const roomId = useMemo(
@@ -143,11 +158,57 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() && isConnected) {
-      websocketService.sendMessage(newMessage.trim());
-      setNewMessage('');
+  const performFactCheck = async (message: string): Promise<FactCheckResult> => {
+    try {
+      const response = await fetch('http://localhost:5000/api/factcheck', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Factcheck error:', error);
+      return {
+        success: false,
+        status: 'unverified',
+        confidence: 0,
+        is_supported: false,
+        formatted_response: `Fehler beim Fact-Check: ${error.message}`,
+        claim_results: [],
+        sources: [],
+        error: error.message
+      };
     }
+  };
+
+
+  const handleSendMessage = async() => {
+    if (newMessage.trim() && isConnected) {
+      const messageText = newMessage.trim();
+      websocketService.sendMessage(messageText);
+      setNewMessage('');
+
+      // Perform fact-check
+      setFactCheckLoading(true);
+      try {
+        const result = await performFactCheck(messageText);
+        setFactCheckResult(result);
+        setShowFactCheckPopup(true);
+      } catch (error) {
+        console.error('Fact-check failed:', error);
+      } finally {
+        setFactCheckLoading(false);
+      }
+    }
+
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -160,9 +221,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const toggleUserList = () => {
     setShowUserList(!showUserList);
   };
+  const getFactCheckIcon = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'partial':
+        return <AlertCircle className="w-5 h-5 text-yellow-500" />;
+      case 'unverified':
+        return <XCircle className="w-5 h-5 text-red-500" />;
+      default:
+        return <Shield className="w-5 h-5 text-gray-500" />;
+    }
+  };
+
+  const getFactCheckColor = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return 'border-green-500 bg-green-50';
+      case 'partial':
+        return 'border-yellow-500 bg-yellow-50';
+      case 'unverified':
+        return 'border-red-500 bg-red-50';
+      default:
+        return 'border-gray-500 bg-gray-50';
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-gray-900 flex flex-col z-50">
+      
       {/* Chat Header */}
       <div className="bg-gray-800 border-b border-gray-700 p-4">
         <div className="flex items-center gap-3 mb-3">
@@ -254,7 +341,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter your message (use @ai for help)"
-                disabled={!isConnected}
+                disabled={!isConnected || !factCheckLoading}
                 className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 rounded-lg px-3 md:px-4 py-2 md:py-3 text-sm md:text-base"
                 maxLength={500}
               />
@@ -270,9 +357,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             <Button 
               onClick={handleSendMessage}
-              disabled={!newMessage.trim() || !isConnected}
+              disabled={!newMessage.trim() || !isConnected || factCheckLoading}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 p-2 md:p-3 rounded-lg"
             >
+              {factCheckLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
               <Send className="w-4 h-4 md:w-5 md:h-5" />
             </Button>
           </div>
@@ -344,6 +436,61 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               Close
             </Button>
           </div>
+        </div>
+      )}
+      {/* Fact Check Popup */}
+      {showFactCheckPopup && factCheckResult && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
+          <Card className={`w-full max-w-md max-h-[80vh] ${getFactCheckColor(factCheckResult.status)} border-2 overflow-hidden`}>
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {getFactCheckIcon(factCheckResult.status)}
+                  <h3 className="font-semibold text-gray-800">Fact Check Result</h3>
+                </div>
+                <Button 
+                  onClick={() => setShowFactCheckPopup(false)} 
+                  variant="ghost" 
+                  size="sm"
+                  className="text-gray-600 hover:text-gray-800"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="mt-2">
+                <div className="text-sm text-gray-600">
+                  Confidence: {(factCheckResult.confidence * 100).toFixed(1)}%
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                  <div 
+                    className={`h-2 rounded-full ${
+                      factCheckResult.status === 'verified' ? 'bg-green-500' :
+                      factCheckResult.status === 'partial' ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${factCheckResult.confidence * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <ScrollArea className="flex-1 p-4">
+              <div className="prose prose-sm max-w-none">
+                <div 
+                  className="text-gray-800 whitespace-pre-wrap text-sm"
+                  dangerouslySetInnerHTML={{ 
+                    __html: factCheckResult.formatted_response.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
+                  }}
+                />
+              </div>
+            </ScrollArea>
+            <div className="p-4 border-t border-gray-200 flex gap-2">
+              <Button 
+                onClick={() => setShowFactCheckPopup(false)}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white"
+              >
+                Close
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </div>

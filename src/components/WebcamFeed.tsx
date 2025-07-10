@@ -50,6 +50,8 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
   debugMode = false,
   showOutlines = true,
   questionId,
+  nodThreshold,
+  shakeThreshold,
   phase
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -73,7 +75,10 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({
     handleConflictFromHook,
     !fallbackMode,
     showOutlines,
-    questionId
+    questionId,
+    nodThreshold,
+    shakeThreshold,
+    phase
   );
 
   // Clear camera error when we exit fallback

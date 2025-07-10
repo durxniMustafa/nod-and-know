@@ -494,22 +494,22 @@ const Index = () => {
 
               {/* DiscussionCard nur in Results-Phase */}
               {phase === PHASES.RESULTS && (
-                <div className="mt-6 mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="mt-6 mb-8 gap-6 items-center">
                   <div className="mb-6">
                     <p className="text-gray-200 text-4xl leading-relaxed text-center">
                       {/* Talk to the person with the same number! */}
                       <br />
                       
                       {SECURITY_QUESTIONS[currentQuestion].followUps.length > 0 && (
-                        <div className="mt-4 text-lg text-purple-200 text-center">
-                          <p className="mb-2">
+                        <div className="mt-4 text-lg text-center">
+                          <h3 className="text-gray-200 text-2xl text-center">
                             The recommended answer is{' '}
                             <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
                               {RECOMMENDED_ANSWERS[currentQuestion]}
                             </span>
                             . Find the person with the same number and start a conversation! Ask them:
-                          </p>
-                          <div className="text-yellow-300 font-semibold">
+                          </h3>
+                          <div className="text-yellow-300 text-2xl mt-5">
                             {SECURITY_QUESTIONS[currentQuestion].followUps[currentFollowUpIndex]}
                           </div>
                         </div>

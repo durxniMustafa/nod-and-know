@@ -232,13 +232,12 @@ const Index = () => {
       setQrTopic(topic);
       setIsDiscussionOpen(true);
       setFallbackMode(true);
-      // Don't generate QR code when accessed via QR code (mobile mode)
       return;
     }
 
-    // Generate initial QR code only for desktop/main interface
     generateQRCode();
-  }, [generateQRCode]);
+    // ACHTUNG: Dependency-Array leer lassen!
+  }, []);
 
   // Regenerate QR code when question changes (only if not in QR mode)
   useEffect(() => {

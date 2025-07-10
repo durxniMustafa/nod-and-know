@@ -24,7 +24,7 @@ const InfoDisplay: React.FC<InfoDisplayProps> = ({
         </div>
         
         <div className="mb-6">
-            <p className="text-gray-200 text-2xl leading-relaxed text-center">
+            <p className="text-gray-200 text-4xl leading-relaxed text-center">
                 {info}
             </p>
         </div>

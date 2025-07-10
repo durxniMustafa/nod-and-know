@@ -89,7 +89,7 @@ export const useMediaPipeFaceDetection = (
   const usernameMapRef = useRef<Record<number, string>>({});
   const nextNameIndexRef = useRef(0);
   const FACE_TRACKING_THRESHOLD = 100 // pixels
-  const FACE_TIMEOUT_MS = 2000 // Remove faces not seen for 2 seconds
+  const FACE_TIMEOUT_MS = 5000 // Remove faces not seen for 5 seconds
 
   // Gesture detection accumulators per face
   const previousNosePositionRef = useRef<Record<number, { x: number; y: number }>>({});
@@ -230,8 +230,8 @@ export const useMediaPipeFaceDetection = (
       }
 
       // Dynamische Thresholds wie gehabt
-      const dynamicNodThreshold = nodThreshold * rect.width * 0.005;
-      const dynamicShakeThreshold = shakeThreshold * rect.width * 0.005;
+      const dynamicNodThreshold = nodThreshold * rect.width * 0.003;
+      const dynamicShakeThreshold = shakeThreshold * rect.width * 0.003;
 
       let gesture: 'yes' | 'no' | null = null;
       let confidence = 0;
@@ -270,6 +270,14 @@ export const useMediaPipeFaceDetection = (
   // -------------------------------
   const processGestureHistory = useCallback(
     (faceId: number) => {
+      // Nur in der Question-Phase abstimmen lassen!
+      if (phase !== 'question') return;
+
+      // Bereits abgestimmt? Dann nichts mehr machen!
+      if (lastGesturePerFaceRef.current[faceId] === 'yes' || lastGesturePerFaceRef.current[faceId] === 'no') {
+        return;
+      }
+
       const history = gestureHistoryMapRef.current[faceId] || [];
       const len = history.length;
       if (len === 0) return;
@@ -322,7 +330,8 @@ export const useMediaPipeFaceDetection = (
       onGestureDetected,
       REQUIRED_GESTURE_FRAMES,
       GESTURE_COOLDOWN_MS,
-      GESTURE_CONFIDENCE_THRESHOLD
+      GESTURE_CONFIDENCE_THRESHOLD,
+      phase // <--- phase als Dependency!
     ]
   );
 

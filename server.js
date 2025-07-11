@@ -1,6 +1,7 @@
 // server.js
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import os from 'os';
 
 // ANSI color codes for better console output
 const colors = {
@@ -54,6 +55,18 @@ function setCachedResponse(key, data) {
     const oldestKeys = Array.from(aiCache.keys()).slice(0, 20);
     oldestKeys.forEach(k => aiCache.delete(k));
   }
+}
+
+function getServerIP() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return '127.0.0.1';
 }
 
 // Enhanced AI wrapper with better prompts and caching
@@ -211,6 +224,14 @@ const httpServer = createServer(async (req, res) => {
         fallback: "I'm having trouble connecting to the AI service right now. Please try again in a moment."
       }));
     }
+    return;
+  }
+
+  // Return server IP address for client-side QR generation
+  if (req.method === 'GET' && req.url === '/ip') {
+    const ip = getServerIP();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ip }));
     return;
   }
 

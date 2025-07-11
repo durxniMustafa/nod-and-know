@@ -167,6 +167,21 @@ const Index = () => {
   // Enhanced function to get local IP address with better fallback methods
   const getLocalIPAddress = async (): Promise<string> => {
     try {
+      setIpDetectionMethod('Requesting IP from server...');
+      const serverUrl = `${window.location.protocol}//${window.location.hostname}:3001/ip`;
+      const res = await fetch(serverUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ip) {
+          setIpDetectionMethod(`Found IP: ${data.ip} via server`);
+          return data.ip;
+        }
+      }
+    } catch (err) {
+      console.warn('Server IP lookup failed:', err);
+    }
+
+    try {
       setIpDetectionMethod('Detecting local IP via WebRTC...');
       
       // Method 1: Try to get local IP using WebRTC
@@ -212,8 +227,8 @@ const Index = () => {
             // Test which IP can reach back to this server
             for (const testIP of commonIPs) {
               try {
-                const response = await fetch(`http://${testIP}:8080/ping`, { 
-                  method: 'GET', 
+                await fetch(`http://${testIP}:3001/ip`, {
+                  method: 'GET',
                   mode: 'no-cors',
                   signal: AbortSignal.timeout(1000)
                 });

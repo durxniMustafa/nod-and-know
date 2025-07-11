@@ -127,40 +127,6 @@ const PHASES = {
 } as const;
 type Phase = typeof PHASES[keyof typeof PHASES];
 
-// Function to get local IP address
-const getLocalIPAddress = async (): Promise<string> => {
-  try {
-    // Method 1: Try to get local IP using WebRTC
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.createDataChannel('');
-    
-    return new Promise((resolve) => {
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          const candidate = event.candidate.candidate;
-          const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-          if (ipMatch && ipMatch[1] !== '127.0.0.1') {
-            pc.close();
-            resolve(ipMatch[1]);
-            return;
-          }
-        }
-      };
-      
-      pc.createOffer().then(offer => pc.setLocalDescription(offer));
-      
-      // If no IP is obtained within 5 seconds, use fallback
-      setTimeout(() => {
-        pc.close();
-        resolve(window.location.hostname || 'localhost');
-      }, 5000);
-    });
-  } catch (error) {
-    console.warn('Unable to get local IP address, using fallback:', error);
-    return window.location.hostname || 'localhost';
-  }
-};
-
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [currentInfo, setCurrentInfo] = useState(0);
@@ -187,15 +153,64 @@ const Index = () => {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [aiAnswer, setAiAnswer] = useState<string>('');
 
-  
+  // Enhanced QR generation states
+  const [qrGenerationStage, setQrGenerationStage] = useState<'idle' | 'getting-ip' | 'generating-qr' | 'complete'>('idle');
+  const [ipDetectionMethod, setIpDetectionMethod] = useState<string>('');
+
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
-  // Generate QR code URL
+  // Enhanced function to get local IP address with feedback
+  const getLocalIPAddress = async (): Promise<string> => {
+    try {
+      setIpDetectionMethod('Detecting local IP via WebRTC...');
+      
+      // Method 1: Try to get local IP using WebRTC
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+      
+      return new Promise((resolve) => {
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            const candidate = event.candidate.candidate;
+            const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+            if (ipMatch && ipMatch[1] !== '127.0.0.1') {
+              setIpDetectionMethod(`Found IP: ${ipMatch[1]} via WebRTC`);
+              pc.close();
+              resolve(ipMatch[1]);
+              return;
+            }
+          }
+        };
+        
+        pc.createOffer().then(offer => pc.setLocalDescription(offer));
+        
+        // If no IP is obtained within 5 seconds, use fallback
+        setTimeout(() => {
+          const fallbackIP = window.location.hostname || 'localhost';
+          setIpDetectionMethod(`Using fallback: ${fallbackIP}`);
+          pc.close();
+          resolve(fallbackIP);
+        }, 5000);
+      });
+    } catch (error) {
+      console.warn('Unable to get local IP address, using fallback:', error);
+      const fallbackIP = window.location.hostname || 'localhost';
+      setIpDetectionMethod(`Error occurred, using fallback: ${fallbackIP}`);
+      return fallbackIP;
+    }
+  };
+
+  // Enhanced Generate QR code URL with detailed loading states
   const generateQRCode = useCallback(async () => {
     try {
+      setQrGenerationStage('getting-ip');
+      setQrCodeUrl(''); // Clear existing QR code
+      
       const ip = await getLocalIPAddress();
       setLocalIP(ip);
+      
+      setQrGenerationStage('generating-qr');
       
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
       const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
@@ -204,18 +219,17 @@ const Index = () => {
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
       setQrCodeUrl(qrUrl);
       
+      setQrGenerationStage('complete');
+      
       console.log('Generated chat URL:', chatUrl);
     } catch (error) {
       console.error('Failed to generate QR code:', error);
+      setQrGenerationStage('idle');
       toast('Failed to generate QR code, please check network connection');
     }
   }, [currentQuestion]);
 
   // On mount, load session data
-  //
-  //
-  //
-  //Hier hatte ich etwas gelöscht
   useEffect(() => {
     dataService.logAnalyticsEvent('session_start');
     const savedQuestion = dataService.getCurrentQuestion();
@@ -465,31 +479,20 @@ const Index = () => {
             </Card>
           )}
 
-          {/*Question/Cooldown Display
-          {isCooldown ? (
-            <CooldownDisplay
-              recommended={RECOMMENDED_ANSWERS[currentQuestion]}
-              remaining={cooldownRemaining}
-            />
-          ) */}
-
-
           {/* Question/Results Display */}
           {(phase === PHASES.QUESTION || phase === PHASES.RESULTS) && (
             <Card
               className="bg-black/50 border-0 p-6 mb-8 h-screen flex flex-col justify-start"
               style={{ minHeight: '60vh', maxHeight: '85vh' }}
             >
-              {/* QuestionDisplay nur in Question-Phase */}
-              {/* {phase === PHASES.QUESTION && ( */}
-                <QuestionDisplay
-                  question={SECURITY_QUESTIONS[currentQuestion].question}
-                  timeRemaining={timeRemaining}
-                  questionDuration={QUESTION_DURATION_MS / 1000}
-                  aiAnswer={aiAnswer}
-                  phase={phase}
-                />
-              {/* )} */}
+              {/* QuestionDisplay in both phases */}
+              <QuestionDisplay
+                question={SECURITY_QUESTIONS[currentQuestion].question}
+                timeRemaining={timeRemaining}
+                questionDuration={QUESTION_DURATION_MS / 1000}
+                aiAnswer={aiAnswer}
+                phase={phase}
+              />
 
               {/* DiscussionCard nur in Results-Phase */}
               {phase === PHASES.RESULTS && (
@@ -529,7 +532,7 @@ const Index = () => {
                 />
               </div>
 
-              {/* QR Code Card*/}
+              {/* Enhanced QR Code Card with detailed loading states */}
               {phase === PHASES.RESULTS && (
                 <Card className="mt-10 mb-8 gap-6 items-center bg-black/50 border-0 p-6">
                   <div className="mt-6 mb-8 flex flex-col lg:flex-row items-center justify-center gap-8">
@@ -538,9 +541,9 @@ const Index = () => {
                         Or anonymously stay in touch over the Chat by scanning the code!
                       </h3>
                     </div>
-                    {/* QR Code */}
+                    {/* Enhanced QR Code with detailed loading states */}
                     <div className="flex-1 flex justify-center">
-                      {qrCodeUrl ? (
+                      {qrGenerationStage === 'complete' && qrCodeUrl ? (
                         <div className="space-y-4">
                           <div className="flex justify-center">
                             <img
@@ -550,27 +553,41 @@ const Index = () => {
                               style={{ maxWidth: '200px', height: 'auto' }}
                             />
                           </div>
-                          {/* {localIP && (
-                            <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-                              <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
-                              <p className="text-xs text-green-400 font-mono break-all">
-                                http://{localIP}:8080
+                          {localIP && (
+                            <div className="text-center">
+                              <p className="text-xs text-green-400 mb-1">
+                                ✓ Connected via: {localIP}
                               </p>
-                              <Button
-                                onClick={copyToClipboard}
-                                variant="outline"
-                                size="sm"
-                                className="mt-2 text-xs"
-                              >
-                                Copy Link
-                              </Button>
                             </div>
-                          )} */}
+                          )}
                         </div>
                       ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-4 text-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-                          <p className="text-gray-400">Generating QR code...</p>
+                          
+                          {qrGenerationStage === 'getting-ip' && (
+                            <div className="space-y-2">
+                              <p className="text-gray-300 font-medium">Getting local IP address...</p>
+                              <p className="text-xs text-gray-400">{ipDetectionMethod}</p>
+                              <div className="w-48 bg-gray-700 rounded-full h-2 mx-auto">
+                                <div className="bg-purple-500 h-2 rounded-full animate-pulse" style={{ width: '30%' }}></div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {qrGenerationStage === 'generating-qr' && (
+                            <div className="space-y-2">
+                              <p className="text-gray-300 font-medium">Generating QR code...</p>
+                              <p className="text-xs text-green-400">✓ IP address: {localIP}</p>
+                              <div className="w-48 bg-gray-700 rounded-full h-2 mx-auto">
+                                <div className="bg-purple-500 h-2 rounded-full animate-pulse" style={{ width: '80%' }}></div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {qrGenerationStage === 'idle' && (
+                            <p className="text-gray-400">Preparing QR code...</p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -587,6 +604,9 @@ const Index = () => {
               
               <div className="text-xs text-gray-400 space-y-1">
                 <div>Detected Faces: {detectedFaces.map((f: any) => f.id).join(', ') || 'None'}</div>
+                <div>QR Generation Stage: {qrGenerationStage}</div>
+                <div>IP Detection: {ipDetectionMethod}</div>
+                <div>Local IP: {localIP}</div>
                 <div>Face Vote History:</div>
                 {Object.entries(faceVotesRef.current).map(([qId, faceIds]) => (
                   <div key={qId} className="ml-2">
@@ -625,6 +645,25 @@ const Index = () => {
                 </div>
               </div>
 
+              {/* Test QR Generation Button */}
+              <div className="mt-4">
+                <Button
+                  onClick={() => generateQRCode()}
+                  variant="outline"
+                  size="sm"
+                  className="mr-2"
+                >
+                  Regenerate QR Code
+                </Button>
+                <Button
+                  onClick={copyToClipboard}
+                  variant="outline"
+                  size="sm"
+                  disabled={!localIP}
+                >
+                  Copy Chat Link
+                </Button>
+              </div>
             </div>
           )}
 

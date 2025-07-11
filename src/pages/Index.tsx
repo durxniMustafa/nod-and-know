@@ -157,26 +157,35 @@ const Index = () => {
   const [qrGenerationStage, setQrGenerationStage] = useState<'idle' | 'getting-ip' | 'generating-qr' | 'complete'>('idle');
   const [ipDetectionMethod, setIpDetectionMethod] = useState<string>('');
 
+  // New states for manual IP input
+  const [manualIP, setManualIP] = useState('');
+  const [showManualIP, setShowManualIP] = useState(false);
+
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
-  // Enhanced function to get local IP address with feedback
+  // Enhanced function to get local IP address with better fallback methods
   const getLocalIPAddress = async (): Promise<string> => {
     try {
       setIpDetectionMethod('Detecting local IP via WebRTC...');
       
       // Method 1: Try to get local IP using WebRTC
-      const pc = new RTCPeerConnection({ iceServers: [] });
+      const pc = new RTCPeerConnection({ 
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // Add STUN server for better results
+      });
       pc.createDataChannel('');
       
       return new Promise((resolve) => {
+        let resolved = false;
+        
         pc.onicecandidate = (event) => {
-          if (event.candidate) {
+          if (event.candidate && !resolved) {
             const candidate = event.candidate.candidate;
             const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-            if (ipMatch && ipMatch[1] !== '127.0.0.1') {
+            if (ipMatch && ipMatch[1] !== '127.0.0.1' && !ipMatch[1].startsWith('169.254')) {
               setIpDetectionMethod(`Found IP: ${ipMatch[1]} via WebRTC`);
               pc.close();
+              resolved = true;
               resolve(ipMatch[1]);
               return;
             }
@@ -185,19 +194,47 @@ const Index = () => {
         
         pc.createOffer().then(offer => pc.setLocalDescription(offer));
         
-        // If no IP is obtained within 5 seconds, use fallback
-        setTimeout(() => {
-          const fallbackIP = window.location.hostname || 'localhost';
-          setIpDetectionMethod(`Using fallback: ${fallbackIP}`);
-          pc.close();
-          resolve(fallbackIP);
-        }, 5000);
+        // If no IP is obtained within 3 seconds, try alternative methods
+        setTimeout(async () => {
+          if (!resolved) {
+            resolved = true;
+            pc.close();
+            
+            // Method 2: Try to guess common local IP ranges
+            const commonIPs = [
+              '192.168.1.100', '192.168.1.101', '192.168.1.102', '192.168.1.103',
+              '192.168.0.100', '192.168.0.101', '192.168.0.102', '192.168.0.103',
+              '10.0.0.100', '10.0.0.101', '10.0.0.102', '10.0.0.103'
+            ];
+            
+            setIpDetectionMethod('WebRTC failed, testing common IP ranges...');
+            
+            // Test which IP can reach back to this server
+            for (const testIP of commonIPs) {
+              try {
+                const response = await fetch(`http://${testIP}:8080/ping`, { 
+                  method: 'GET', 
+                  mode: 'no-cors',
+                  signal: AbortSignal.timeout(1000)
+                });
+                setIpDetectionMethod(`Found working IP: ${testIP} via network test`);
+                resolve(testIP);
+                return;
+              } catch (e) {
+                // Continue to next IP
+              }
+            }
+            
+            // Method 3: Ask user to manually enter IP
+            setIpDetectionMethod('Unable to auto-detect IP. Please enter manually below.');
+            resolve('AUTO_DETECT_FAILED');
+          }
+        }, 3000);
       });
     } catch (error) {
-      console.warn('Unable to get local IP address, using fallback:', error);
-      const fallbackIP = window.location.hostname || 'localhost';
-      setIpDetectionMethod(`Error occurred, using fallback: ${fallbackIP}`);
-      return fallbackIP;
+      console.warn('Unable to get local IP address:', error);
+      setIpDetectionMethod(`Error occurred: ${error.message}. Please enter IP manually.`);
+      return 'AUTO_DETECT_FAILED';
     }
   };
 
@@ -207,9 +244,21 @@ const Index = () => {
       setQrGenerationStage('getting-ip');
       setQrCodeUrl(''); // Clear existing QR code
       
-      const ip = await getLocalIPAddress();
-      setLocalIP(ip);
+      let ip = await getLocalIPAddress();
       
+      // If auto-detection failed, check if we have manual IP
+      if (ip === 'AUTO_DETECT_FAILED') {
+        if (manualIP && manualIP.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+          ip = manualIP;
+          setIpDetectionMethod(`Using manual IP: ${ip}`);
+        } else {
+          setShowManualIP(true);
+          setQrGenerationStage('idle');
+          return;
+        }
+      }
+      
+      setLocalIP(ip);
       setQrGenerationStage('generating-qr');
       
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
@@ -220,6 +269,7 @@ const Index = () => {
       setQrCodeUrl(qrUrl);
       
       setQrGenerationStage('complete');
+      setShowManualIP(false);
       
       console.log('Generated chat URL:', chatUrl);
     } catch (error) {
@@ -227,7 +277,7 @@ const Index = () => {
       setQrGenerationStage('idle');
       toast('Failed to generate QR code, please check network connection');
     }
-  }, [currentQuestion]);
+  }, [currentQuestion, manualIP]);
 
   // On mount, load session data
   useEffect(() => {
@@ -429,7 +479,7 @@ const Index = () => {
 
   // Copy chat link to clipboard
   const copyToClipboard = async () => {
-    if (localIP) {
+    if (localIP && localIP !== 'AUTO_DETECT_FAILED') {
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
       const chatUrl = `http://${localIP}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
 
@@ -532,7 +582,7 @@ const Index = () => {
                 />
               </div>
 
-              {/* Enhanced QR Code Card with detailed loading states */}
+              {/* Enhanced QR Code Card with detailed loading states and manual IP input */}
               {phase === PHASES.RESULTS && (
                 <Card className="mt-10 mb-8 gap-6 items-center bg-black/50 border-0 p-6">
                   <div className="mt-6 mb-8 flex flex-col lg:flex-row items-center justify-center gap-8">
@@ -540,7 +590,54 @@ const Index = () => {
                       <h3 className="text-gray-200 text-2xl leading-relaxed text-center lg:text-left">
                         Or anonymously stay in touch over the Chat by scanning the code!
                       </h3>
+                      
+                      {/* Always show the manual URL for typing */}
+                      {localIP && localIP !== 'AUTO_DETECT_FAILED' && (
+                        <div className="mt-4 p-4 bg-gray-800 rounded-lg">
+                          <p className="text-gray-300 text-sm mb-2">Or type this URL manually:</p>
+                          <code className="text-green-400 text-xs break-all">
+                            http://{localIP}:8080?room={encodeURIComponent(`question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`)}&topic={encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}
+                          </code>
+                          <Button
+                            onClick={copyToClipboard}
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 ml-2"
+                          >
+                            Copy URL
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Manual IP input when auto-detection fails */}
+                      {showManualIP && (
+                        <div className="mt-4 p-4 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                          <p className="text-yellow-300 text-sm mb-2">
+                            Couldn't auto-detect your local IP. Please enter it manually:
+                          </p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="e.g., 192.168.1.100"
+                              value={manualIP}
+                              onChange={(e) => setManualIP(e.target.value)}
+                              className="flex-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
+                            />
+                            <Button
+                              onClick={() => generateQRCode()}
+                              disabled={!manualIP.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)}
+                              size="sm"
+                            >
+                              Generate QR
+                            </Button>
+                          </div>
+                          <p className="text-gray-400 text-xs mt-1">
+                            Find your IP by opening Command Prompt/Terminal and typing: ipconfig (Windows) or ifconfig (Mac/Linux)
+                          </p>
+                        </div>
+                      )}
                     </div>
+                    
                     {/* Enhanced QR Code with detailed loading states */}
                     <div className="flex-1 flex justify-center">
                       {qrGenerationStage === 'complete' && qrCodeUrl ? (
@@ -553,17 +650,22 @@ const Index = () => {
                               style={{ maxWidth: '200px', height: 'auto' }}
                             />
                           </div>
-                          {localIP && (
+                          {localIP && localIP !== 'AUTO_DETECT_FAILED' && (
                             <div className="text-center">
-                              <p className="text-xs text-green-400 mb-1">
-                                ✓ Connected via: {localIP}
+                              <p className="text-lg font-mono text-green-400 bg-gray-800 px-3 py-1 rounded">
+                                {localIP}:8080
+                              </p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Local IP Address
                               </p>
                             </div>
                           )}
                         </div>
                       ) : (
                         <div className="space-y-4 text-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                          {!showManualIP && (
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                          )}
                           
                           {qrGenerationStage === 'getting-ip' && (
                             <div className="space-y-2">
@@ -585,7 +687,7 @@ const Index = () => {
                             </div>
                           )}
                           
-                          {qrGenerationStage === 'idle' && (
+                          {qrGenerationStage === 'idle' && !showManualIP && (
                             <p className="text-gray-400">Preparing QR code...</p>
                           )}
                         </div>
@@ -607,6 +709,8 @@ const Index = () => {
                 <div>QR Generation Stage: {qrGenerationStage}</div>
                 <div>IP Detection: {ipDetectionMethod}</div>
                 <div>Local IP: {localIP}</div>
+                <div>Show Manual IP: {showManualIP ? 'Yes' : 'No'}</div>
+                <div>Manual IP Input: {manualIP || 'None'}</div>
                 <div>Face Vote History:</div>
                 {Object.entries(faceVotesRef.current).map(([qId, faceIds]) => (
                   <div key={qId} className="ml-2">
@@ -659,9 +763,17 @@ const Index = () => {
                   onClick={copyToClipboard}
                   variant="outline"
                   size="sm"
-                  disabled={!localIP}
+                  disabled={!localIP || localIP === 'AUTO_DETECT_FAILED'}
                 >
                   Copy Chat Link
+                </Button>
+                <Button
+                  onClick={() => setShowManualIP(!showManualIP)}
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
+                >
+                  Toggle Manual IP Input
                 </Button>
               </div>
             </div>

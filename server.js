@@ -30,103 +30,209 @@ function log(type, message, data = '') {
   );
 }
 
-// Simple wrapper to call DeepSeek's chat API with context messages
-async function callDeepSeek(messages) {
-  const apiKey = process.env.DEEPSEEK_API_KEY || "sk-68df5077e3264402b50a293e4f5b82da";
-  if (!apiKey) {
-    throw new Error('DeepSeek API key not configured. Please set DEEPSEEK_API_KEY environment variable.');
+// Simple cache for AI responses
+const aiCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(prompt) {
+  return Buffer.from(prompt.slice(-200)).toString('base64').slice(0, 32);
+}
+
+function getCachedResponse(key) {
+  const cached = aiCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
   }
+  aiCache.delete(key);
+  return null;
+}
 
-  log('ai', '🤖 Sending request to DeepSeek AI...');
-
-  const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    log('error', `DeepSeek API returned error: ${res.status}`, text);
-    throw new Error(`DeepSeek API error (${res.status}): ${text}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content?.trim() || '';
-
-  try {
-    const parsed = JSON.parse(content);
-    log('ai', '✅ AI response received successfully');
-    return {
-      answer: parsed.answer || content,
-      followUp: Array.isArray(parsed.follow_up) ? parsed.follow_up : [],
-    };
-  } catch {
-    log('warning', '⚠️  AI response not in expected JSON format, using plain text');
-    // Try to extract content if it looks like it might have JSON structure
-    const answerMatch = content.match(/"answer":\s*"([^"]+)"/);
-    if (answerMatch) {
-      return { answer: answerMatch[1], followUp: [] };
-    }
-    return { answer: content, followUp: [] };
+function setCachedResponse(key, data) {
+  aiCache.set(key, { data, timestamp: Date.now() });
+  // Clean old cache entries
+  if (aiCache.size > 100) {
+    const oldestKeys = Array.from(aiCache.keys()).slice(0, 20);
+    oldestKeys.forEach(k => aiCache.delete(k));
   }
 }
 
+// Enhanced AI wrapper with better prompts and caching
+async function callDeepSeek(messages, context = {}) {
+  const apiKey = process.env.DEEPSEEK_API_KEY || "sk-68df5077e3264402b50a293e4f5b82da";
+  if (!apiKey) {
+    throw new Error('DeepSeek API key not configured');
+  }
+
+  // Create cache key from the last message
+  const lastMessage = messages[messages.length - 1]?.content || '';
+  const cacheKey = getCacheKey(lastMessage);
+
+  // Check cache first
+  const cached = getCachedResponse(cacheKey);
+  if (cached) {
+    log('ai', '💾 Returning cached response');
+    return cached;
+  }
+
+  log('ai', '🤖 Generating AI response...');
+  const startTime = Date.now();
+
+  // Enhanced system prompt for better responses
+  const systemPrompt = {
+    role: 'system',
+    content: `You are a knowledgeable cybersecurity expert assistant in a live chat room discussing "${context.topic || 'security topics'}". 
+
+Your responses should be:
+- Conversational and engaging, like talking to a friend
+- Practical and actionable when giving advice
+- Educational but not overwhelming
+- Include real-world examples when relevant
+- Ask follow-up questions to encourage discussion
+
+Always respond in this JSON format:
+{
+  "answer": "Your main response here (2-4 sentences max for chat)",
+  "follow_up": ["Engaging follow-up question 1", "Engaging follow-up question 2"],
+  "quick_tips": ["Quick tip 1", "Quick tip 2"] (optional, only for how-to questions)
+}
+
+Keep your main answer concise for chat flow, but make it valuable and specific.`
+  };
+
+  try {
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [systemPrompt, ...messages.slice(-5)], // Include system prompt + last 5 messages
+        temperature: 0.8, // Slightly more creative
+        max_tokens: 800,
+        presence_penalty: 0.1, // Encourage diverse responses
+        frequency_penalty: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      log('error', `DeepSeek API error: ${response.status}`, errorText);
+      throw new Error(`AI service unavailable (${response.status})`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim() || '';
+
+    if (!content) {
+      throw new Error('Empty response from AI');
+    }
+
+    const responseTime = Date.now() - startTime;
+    log('ai', `✅ AI response generated in ${responseTime}ms`);
+
+    let result;
+    try {
+      const parsed = JSON.parse(content);
+      result = {
+        answer: parsed.answer || content,
+        followUp: Array.isArray(parsed.follow_up) ? parsed.follow_up : [],
+        quickTips: Array.isArray(parsed.quick_tips) ? parsed.quick_tips : [],
+        responseTime,
+      };
+    } catch {
+      log('warning', '⚠️ AI response not in JSON format, parsing text');
+
+      // Try to extract answer from text format
+      const lines = content.split('\n').filter(line => line.trim());
+      const answer = lines[0] || content;
+
+      result = {
+        answer: answer.replace(/^(Answer:|Response:)\s*/i, ''),
+        followUp: [],
+        quickTips: [],
+        responseTime,
+      };
+    }
+
+    // Cache the result
+    setCachedResponse(cacheKey, result);
+    return result;
+
+  } catch (error) {
+    log('error', 'AI request failed:', error.message);
+    throw error;
+  }
+}
+
+// Better HTTP AI endpoint
 const httpServer = createServer(async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
   if (req.method === 'GET' && req.url && req.url.startsWith('/ai-answer')) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const question = url.searchParams.get('q');
 
-    log('info', `📥 HTTP AI request received: ${question?.substring(0, 50)}${question?.length > 50 ? '...' : ''}`);
-
     if (!question) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Please provide a question parameter (?q=your-question)' }));
-      log('warning', '⚠️  AI request rejected: Missing question parameter');
+      res.end(JSON.stringify({ error: 'Missing question parameter' }));
       return;
     }
 
     try {
       const answer = await callDeepSeek([
-        { role: 'user', content: `Answer concisely and clearly: ${question}` }
+        { role: 'user', content: question }
       ]);
 
-      // Format the response for HTTP endpoint
-      let formattedResponse = {
-        answer: answer.answer,
-        timestamp: new Date().toISOString()
-      };
-
-      if (answer.followUp && answer.followUp.length > 0) {
-        formattedResponse.suggestions = answer.followUp;
-      }
-
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(formattedResponse, null, 2));
-      log('success', '✨ AI answer delivered successfully');
+      res.end(JSON.stringify({
+        answer: answer.answer,
+        suggestions: answer.followUp,
+        tips: answer.quickTips,
+        timestamp: new Date().toISOString(),
+        responseTime: answer.responseTime
+      }));
+
     } catch (err) {
-      log('error', '❌ AI request failed:', err.message);
+      log('error', '❌ HTTP AI request failed:', err.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        error: 'Unable to process your request. Please try again later.',
-        details: err.message
+        error: 'AI service temporarily unavailable',
+        fallback: "I'm having trouble connecting to the AI service right now. Please try again in a moment."
       }));
     }
     return;
   }
+
+  // Health check
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'healthy',
+      aiCache: aiCache.size,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString()
+    }));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
 
 // Store recent chat history per room for better AI context
 const chatHistory = {};
-const activeRooms = new Map(); // Track active rooms and participants
+const activeRooms = new Map();
 
 const io = new Server(httpServer, {
   cors: {
@@ -136,7 +242,7 @@ const io = new Server(httpServer, {
 });
 
 io.on('connection', (socket) => {
-  log('info', `🔌 New connection established: ${socket.id}`);
+  log('info', `🔌 New connection: ${socket.id}`);
 
   socket.on('joinRoom', ({ roomId, username, topic }) => {
     socket.join(roomId);
@@ -144,15 +250,13 @@ io.on('connection', (socket) => {
     socket.data.username = username;
     socket.data.topic = topic;
 
-    // Track room participants
     if (!activeRooms.has(roomId)) {
       activeRooms.set(roomId, new Set());
     }
     activeRooms.get(roomId).add(username);
 
     socket.to(roomId).emit('userJoined', username);
-    log('success', `👋 ${username} joined room: ${roomId} (Topic: ${topic || 'General Chat'})`);
-    log('info', `👥 Room ${roomId} now has ${activeRooms.get(roomId).size} participants`);
+    log('success', `👋 ${username} joined room: ${roomId}`);
   });
 
   socket.on('message', async ({ roomId, text, userId, username }) => {
@@ -165,43 +269,57 @@ io.on('connection', (socket) => {
     };
 
     io.to(roomId).emit('message', payload);
-    log('info', `💬 [${roomId}] ${username}: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+    log('info', `💬 [${roomId}] ${username}: ${text.substring(0, 100)}`);
 
     // Track conversation history for AI context
     if (!chatHistory[roomId]) chatHistory[roomId] = [];
     chatHistory[roomId].push({ role: 'user', content: `${username}: ${text}` });
-    chatHistory[roomId] = chatHistory[roomId].slice(-10); // Keep last 10 messages
+    chatHistory[roomId] = chatHistory[roomId].slice(-8); // Keep last 8 messages
 
-    // Handle AI mentions
+    // Enhanced AI mentions handling
     if (text.trim().toLowerCase().startsWith('@ai')) {
       log('ai', `🤖 AI assistance requested in room ${roomId}`);
 
+      // Show typing indicator immediately
+      io.to(roomId).emit('aiTyping', { isTyping: true });
+
       const userPrompt = text.replace(/^@ai\s*/i, '').trim() ||
-        `Tell me more about: ${socket.data.topic || 'this topic'}`;
+        `Tell me more about: ${socket.data.topic || 'this security topic'}`;
 
       try {
         const history = chatHistory[roomId] || [];
         const messages = [
-          {
-            role: 'system',
-            content: 'You are a helpful security assistant in a chat room. Provide clear, conversational answers. Always respond in this exact JSON format: {"answer": "your helpful response here", "follow_up": ["relevant question 1", "relevant question 2"]}. Keep your main answer concise but informative. Make follow-up questions engaging and relevant to the topic.'
-          },
-          ...history.slice(-5), // Include last 5 messages for context
+          ...history.slice(-3), // Last 3 messages for context
           { role: 'user', content: userPrompt },
         ];
 
-        const reply = await callDeepSeek(messages);
+        const reply = await callDeepSeek(messages, {
+          topic: socket.data.topic,
+          roomId,
+          username
+        });
+
+        // Stop typing indicator
+        io.to(roomId).emit('aiTyping', { isTyping: false });
 
         // Add AI response to history
         chatHistory[roomId].push({ role: 'assistant', content: reply.answer });
-        chatHistory[roomId] = chatHistory[roomId].slice(-10);
+        chatHistory[roomId] = chatHistory[roomId].slice(-8);
 
-        // Format the AI response with follow-up questions
+        // Format the enhanced AI response
         let formattedText = reply.answer;
 
-        // Add follow-up questions if available
+        // Add quick tips if available
+        if (reply.quickTips && reply.quickTips.length > 0) {
+          formattedText += '\n\n🔧 **Quick Tips:**';
+          reply.quickTips.forEach((tip, index) => {
+            formattedText += `\n• ${tip}`;
+          });
+        }
+
+        // Add follow-up questions
         if (reply.followUp && reply.followUp.length > 0) {
-          formattedText += '\n\n💡 **You might also want to know:**';
+          formattedText += '\n\n💭 **Let\'s discuss:**';
           reply.followUp.forEach((question, index) => {
             formattedText += `\n${index + 1}. ${question}`;
           });
@@ -213,22 +331,21 @@ io.on('connection', (socket) => {
           timestamp: new Date().toISOString(),
           userId: 'deepseek',
           username: '🤖 AI Assistant',
+          responseTime: reply.responseTime,
+          followUp: reply.followUp,
+          quickTips: reply.quickTips
         };
 
         io.to(roomId).emit('message', aiPayload);
-        log('ai', `✅ AI responded in room ${roomId}`);
+        log('ai', `✅ AI responded in room ${roomId} (${reply.responseTime}ms)`);
 
-        // Log follow-up questions if any
-        if (reply.followUp && reply.followUp.length > 0) {
-          log('ai', `💡 Suggested follow-ups: ${reply.followUp.join(' | ')}`);
-        }
       } catch (err) {
+        io.to(roomId).emit('aiTyping', { isTyping: false });
         log('error', `❌ AI response failed in room ${roomId}:`, err.message);
 
-        // Send error message to room
         const errorPayload = {
           id: Date.now().toString() + '_error',
-          text: '⚠️ Sorry, I encountered an error processing your request. Please try again in a moment.',
+          text: '⚠️ I\'m having trouble thinking right now. Could you try rephrasing your question?',
           timestamp: new Date().toISOString(),
           userId: 'system',
           username: '🔧 System',
@@ -246,17 +363,9 @@ io.on('connection', (socket) => {
       activeRooms.get(roomId).delete(username);
       if (activeRooms.get(roomId).size === 0) {
         activeRooms.delete(roomId);
-        delete chatHistory[roomId]; // Clean up chat history
-        log('info', `🧹 Room ${roomId} is now empty and has been cleaned up`);
-      } else {
-        log('info', `👥 Room ${roomId} now has ${activeRooms.get(roomId).size} participants`);
+        delete chatHistory[roomId];
       }
       socket.to(roomId).emit('userLeft', username);
-      log('info', `👋 ${username} left room: ${roomId}`);
-    }
-
-    if (socket.data.roomId === roomId) {
-      socket.data.roomId = null;
     }
   });
 
@@ -268,14 +377,11 @@ io.on('connection', (socket) => {
         if (activeRooms.get(roomId).size === 0) {
           activeRooms.delete(roomId);
           delete chatHistory[roomId];
-          log('info', `🧹 Room ${roomId} is now empty and has been cleaned up`);
         }
       }
       socket.to(roomId).emit('userLeft', username);
-      log('warning', `⚡ ${username} disconnected from room: ${roomId}`);
-    } else {
-      log('info', `🔌 Connection closed: ${socket.id}`);
     }
+    log('info', `🔌 Connection closed: ${socket.id}`);
   });
 });
 
@@ -283,28 +389,28 @@ const PORT = process.env.PORT || 3001;
 
 httpServer.listen(PORT, () => {
   console.log('\n' + colors.bright + '═'.repeat(60) + colors.reset);
-  log('success', `🚀 WebSocket server is running!`);
-  log('info', `📡 Listening on port: ${PORT}`);
-  log('info', `🌐 WebSocket endpoint: ws://localhost:${PORT}`);
-  log('info', `🔗 HTTP AI endpoint: http://localhost:${PORT}/ai-answer?q=your-question`);
-  log('info', `🤖 AI Provider: DeepSeek Chat`);
-  log('info', `📊 Active rooms: ${activeRooms.size}`);
+  log('success', `🚀 Enhanced AI Chat Server running!`);
+  log('info', `📡 Port: ${PORT}`);
+  log('info', `🌐 WebSocket: ws://localhost:${PORT}`);
+  log('info', `🔗 AI API: http://localhost:${PORT}/ai-answer?q=question`);
+  log('info', `🏥 Health: http://localhost:${PORT}/health`);
+  log('info', `🤖 AI: DeepSeek with enhanced responses`);
   console.log(colors.bright + '═'.repeat(60) + colors.reset + '\n');
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  log('warning', '⚠️  Received SIGTERM, shutting down gracefully...');
+  log('warning', '⚠️ Shutting down gracefully...');
   httpServer.close(() => {
-    log('success', '✅ Server closed successfully');
+    log('success', '✅ Server closed');
     process.exit(0);
   });
 });
 
 process.on('SIGINT', () => {
-  log('warning', '⚠️  Received SIGINT, shutting down gracefully...');
+  log('warning', '⚠️ Shutting down gracefully...');
   httpServer.close(() => {
-    log('success', '✅ Server closed successfully');
+    log('success', '✅ Server closed');
     process.exit(0);
   });
 });

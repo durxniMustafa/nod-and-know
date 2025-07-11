@@ -57,16 +57,30 @@ function setCachedResponse(key, data) {
   }
 }
 
+function isPrivate(ip) {
+  return (
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+  );
+}
+
 function getServerIP() {
   const nets = os.networkInterfaces();
+  let fallback = null;
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] || []) {
       if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
+        if (isPrivate(net.address)) {
+          return net.address;
+        }
+        if (!fallback) {
+          fallback = net.address;
+        }
       }
     }
   }
-  return '127.0.0.1';
+  return fallback || '127.0.0.1';
 }
 
 // Enhanced AI wrapper with better prompts and caching

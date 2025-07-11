@@ -11,6 +11,7 @@ import { dataService } from '@/services/dataService';
 import HelpDialog from '@/components/HelpDialog';
 import { Link } from 'react-router-dom';
 import { toast } from '@/components/ui/sonner';
+import { isPrivateIP } from '@/lib/utils';
 
 export interface SecurityQuestionSet {
   recommended: 'yes' | 'no';
@@ -164,98 +165,54 @@ const Index = () => {
   // Track which face IDs have voted for which questions (persisted across question changes)
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
+
   // Enhanced function to get local IP address with better fallback methods
-  const getLocalIPAddress = async (): Promise<string> => {
-    try {
-      setIpDetectionMethod('Requesting IP from server...');
-      const serverUrl = `${window.location.protocol}//${window.location.hostname}:3001/ip`;
-      const res = await fetch(serverUrl);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ip) {
-          setIpDetectionMethod(`Found IP: ${data.ip} via server`);
-          return data.ip;
-        }
+  const getLocalIPAddress = async (): Promise<string | 'AUTO_DETECT_FAILED'> => {
+  const toPrivate = (ip: string | undefined) => (ip && isPrivateIP(ip) ? ip : undefined);
+
+  /* ---------- 1. try server helper ---------- */
+  try {
+    setIpDetectionMethod('Requesting IP from server…');
+    const res = await fetch(`${window.location.protocol}//${window.location.hostname}:3001/ip`);
+    if (res.ok) {
+      const { ip } = await res.json();
+      const priv = toPrivate(ip);
+      if (priv) {
+        setIpDetectionMethod(`Private IP from server: ${priv}`);
+        return priv;
       }
-    } catch (err) {
-      console.warn('Server IP lookup failed:', err);
     }
+  } catch (_) {}
 
-      try {
-        setIpDetectionMethod('Detecting local IP via WebRTC...');
+  /* ---------- 2. try WebRTC candidates ---------- */
+  try {
+    setIpDetectionMethod('Detecting via WebRTC…');
+    return await new Promise<string | 'AUTO_DETECT_FAILED'>((resolve) => {
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc.createDataChannel('x');           // force ICE gathering
 
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-        pc.createDataChannel('');
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate) return;
+        const ip = (candidate as any).address ||
+                   candidate.candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
+        const priv = toPrivate(ip);
+        if (priv) {
+          setIpDetectionMethod(`Private IP via WebRTC: ${priv}`);
+          pc.close();
+          resolve(priv);
+        }
+      };
 
-        return new Promise((resolve) => {
-          let resolved = false;
-          let fallbackIP: string | null = null;
-          const privateIPRegex = /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/;
+      pc.createOffer().then(o => pc.setLocalDescription(o));
 
-          pc.onicecandidate = (event) => {
-            if (!event.candidate || resolved) return;
-            const candidate = event.candidate.candidate;
-            const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-            const ip = ipMatch?.[1];
-            if (!ip || ip === '127.0.0.1' || ip.startsWith('169.254')) return;
+      setTimeout(() => { pc.close(); resolve('AUTO_DETECT_FAILED'); }, 3000);
+    });
+  } catch (_) {}
 
-            if (privateIPRegex.test(ip)) {
-              setIpDetectionMethod(`Private IP detected: ${ip}`);
-              resolved = true;
-              pc.close();
-              resolve(ip);
-            } else if (!fallbackIP) {
-              fallbackIP = ip;
-            }
-          };
+  setIpDetectionMethod('No private IP found; need manual entry.');
+  return 'AUTO_DETECT_FAILED';
+};
 
-          pc.createOffer().then((offer) => pc.setLocalDescription(offer));
-
-          setTimeout(async () => {
-            if (resolved) return;
-            pc.close();
-
-            if (fallbackIP) {
-              setIpDetectionMethod(`No private IP found, using ${fallbackIP}`);
-              resolve(fallbackIP);
-              return;
-            }
-
-            const commonIPs = [
-              '192.168.1.100', '192.168.1.101', '192.168.1.102', '192.168.1.103',
-              '192.168.0.100', '192.168.0.101', '192.168.0.102', '192.168.0.103',
-              '10.0.0.100', '10.0.0.101', '10.0.0.102', '10.0.0.103'
-            ];
-
-            setIpDetectionMethod('WebRTC failed, testing common IP ranges...');
-
-            for (const testIP of commonIPs) {
-              try {
-                await fetch(`http://${testIP}:3001/ip`, {
-                  method: 'GET',
-                  mode: 'no-cors',
-                  signal: AbortSignal.timeout(1000)
-                });
-                setIpDetectionMethod(`Found working IP: ${testIP} via network test`);
-                resolve(testIP);
-                return;
-              } catch (e) {
-                // Continue to next IP
-              }
-            }
-
-            setIpDetectionMethod('Unable to auto-detect IP. Please enter manually below.');
-            resolve('AUTO_DETECT_FAILED');
-          }, 3000);
-        });
-      } catch (error) {
-        console.warn('Unable to get local IP address:', error);
-        setIpDetectionMethod(`Error occurred: ${error.message}. Please enter IP manually.`);
-        return 'AUTO_DETECT_FAILED';
-      }
-  };
 
   // Enhanced Generate QR code URL with detailed loading states
   const generateQRCode = useCallback(async () => {

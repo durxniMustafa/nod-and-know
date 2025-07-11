@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocalIPAddress } from '@/hooks/useLocalIPAddress';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,39 +38,6 @@ const RECOMMENDED_ANSWERS: ('yes' | 'no')[] = [
 const QUESTION_DURATION_MS = 45000;
 const COOLDOWN_DURATION_MS = 20000;
 
-// Function to get local IP address
-const getLocalIPAddress = async (): Promise<string> => {
-  try {
-    // Method 1: Try to get local IP using WebRTC
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.createDataChannel('');
-    
-    return new Promise((resolve) => {
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          const candidate = event.candidate.candidate;
-          const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-          if (ipMatch && ipMatch[1] !== '127.0.0.1') {
-            pc.close();
-            resolve(ipMatch[1]);
-            return;
-          }
-        }
-      };
-      
-      pc.createOffer().then(offer => pc.setLocalDescription(offer));
-      
-      // If no IP is obtained within 5 seconds, use fallback
-      setTimeout(() => {
-        pc.close();
-        resolve(window.location.hostname || 'localhost');
-      }, 5000);
-    });
-  } catch (error) {
-    console.warn('Unable to get local IP address, using fallback:', error);
-    return window.location.hostname || 'localhost';
-  }
-};
 
 const Index = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -90,7 +58,7 @@ const Index = () => {
   const [nodThreshold, setNodThreshold] = useState(0.04);
   const [shakeThreshold, setShakeThreshold] = useState(0.06);
 
-  const [localIP, setLocalIP] = useState<string>('');
+  const localIP = useLocalIPAddress();
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [aiAnswer, setAiAnswer] = useState<string>('');
 
@@ -99,24 +67,22 @@ const Index = () => {
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
   // Generate QR code URL
-  const generateQRCode = useCallback(async () => {
+  const generateQRCode = useCallback(() => {
     try {
-      const ip = await getLocalIPAddress();
-      setLocalIP(ip);
-      
+      const ip = localIP || window.location.hostname;
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion]).slice(0, 8)}`;
       const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion])}`;
-      
+
       // Use online QR code generation service
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
       setQrCodeUrl(qrUrl);
-      
+
       console.log('Generated chat URL:', chatUrl);
     } catch (error) {
       console.error('Failed to generate QR code:', error);
       toast('Failed to generate QR code, please check network connection');
     }
-  }, [currentQuestion]);
+  }, [currentQuestion, localIP]);
 
   // On mount, load session data
   useEffect(() => {

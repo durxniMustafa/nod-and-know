@@ -3,16 +3,16 @@ from flask_cors import CORS
 import logging
 import threading
 import time
-from paste-2 import SimplePDFFactChecker  # Importiere deine Factchecker-Klasse
+from SimplePDFFactChecker  import SimplePDFFactChecker  
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Erlaubt Frontend-Anfragen
+CORS(app)  # Front End
 
-# Globale Factchecker-Instanz
+# global factcheck variable
 factchecker = None
 factchecker_lock = threading.Lock()
 
@@ -35,14 +35,14 @@ def initialize_factchecker():
 def factcheck_message():
     """API Endpoint für Fact-Checking"""
     try:
-        # Prüfe ob Factchecker verfügbar ist
+        
         if factchecker is None:
             return jsonify({
                 'error': 'Factchecker nicht verfügbar',
                 'success': False
             }), 503
         
-        # Hole Nachricht aus Request
+    
         data = request.get_json()
         if not data or 'message' not in data:
             return jsonify({
@@ -56,16 +56,14 @@ def factcheck_message():
                 'error': 'Leere Nachricht',
                 'success': False
             }), 400
-        
-        # Führe Fact-Check durch
+
         with factchecker_lock:
             logger.info(f"Fact-checking: {message[:100]}...")
-            
-            # Fact-Check durchführen
+
             results = factchecker.simple_fact_check(message)
             formatted_response = factchecker.format_simple_response(results)
             
-            # Bestimme Status basierend auf Confidence
+            # status of confidence
             status = "verified" if results['is_supported'] else "unverified"
             if results['confidence'] > 0.7:
                 status = "verified"
@@ -126,13 +124,13 @@ def health_check():
     })
 
 if __name__ == '__main__':
-    # Initialisiere Factchecker in separatem Thread
+
     init_thread = threading.Thread(target=initialize_factchecker)
     init_thread.daemon = True
     init_thread.start()
     
-    # Warte kurz auf Initialisierung
+
     time.sleep(2)
     
-    # Starte Flask App
-    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
+    # Start flask app
+    app.run(debug=True, host='0.0.0.0', port=8080, threaded=True)

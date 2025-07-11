@@ -341,7 +341,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter your message (use @ai for help)"
-                disabled={!isConnected || !factCheckLoading}
+                disabled={isConnected || factCheckLoading}
                 className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 rounded-lg px-3 md:px-4 py-2 md:py-3 text-sm md:text-base"
                 maxLength={500}
               />
@@ -357,7 +357,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             <Button 
               onClick={handleSendMessage}
-              disabled={!newMessage.trim() || !isConnected || factCheckLoading}
+              disabled={!newMessage.trim() || !isConnected || !factCheckLoading}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 p-2 md:p-3 rounded-lg"
             >
               {factCheckLoading ? (

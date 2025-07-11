@@ -232,13 +232,12 @@ const Index = () => {
       setQrTopic(topic);
       setIsDiscussionOpen(true);
       setFallbackMode(true);
-      // Don't generate QR code when accessed via QR code (mobile mode)
       return;
     }
 
-    // Generate initial QR code only for desktop/main interface
     generateQRCode();
-  }, [generateQRCode]);
+    // ACHTUNG: Dependency-Array leer lassen!
+  }, []);
 
   // Regenerate QR code when question changes (only if not in QR mode)
   useEffect(() => {
@@ -494,29 +493,26 @@ const Index = () => {
 
               {/* DiscussionCard nur in Results-Phase */}
               {phase === PHASES.RESULTS && (
-                <div className="mt-6 mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="mb-6">
+                <Card className="mt-10 mb-8 gap-6 items-center bg-black/50 border-0 p-6">
+                  <div>
                     <p className="text-gray-200 text-4xl leading-relaxed text-center">
-                      {/* Talk to the person with the same number! */}
-                      <br />
-                      
                       {SECURITY_QUESTIONS[currentQuestion].followUps.length > 0 && (
-                        <div className="mt-4 text-lg text-purple-200 text-center">
-                          <p className="mb-2">
+                        <div className="mt-0 text-lg text-center">
+                          <h3 className="text-gray-200 text-2xl text-center">
                             The recommended answer is{' '}
                             <span className={RECOMMENDED_ANSWERS[currentQuestion] === 'yes' ? 'text-green-400' : 'text-red-400'}>
                               {RECOMMENDED_ANSWERS[currentQuestion]}
                             </span>
                             . Find the person with the same number and start a conversation! Ask them:
-                          </p>
-                          <div className="text-yellow-300 font-semibold">
+                          </h3>
+                          <div className="text-yellow-300 text-2xl mt-5">
                             {SECURITY_QUESTIONS[currentQuestion].followUps[currentFollowUpIndex]}
                           </div>
                         </div>
                       )}
                     </p>
                   </div>
-                </div>
+                </Card>
               )}
 
               {/* WebcamFeed bleibt immer gemountet, Sichtbarkeit über Phase */}
@@ -535,50 +531,51 @@ const Index = () => {
 
               {/* QR Code Card*/}
               {phase === PHASES.RESULTS && (
-                <div className="mt-6 mb-8 flex flex-col lg:flex-row items-center justify-center gap-8">
-                  {/* Text */}
-                  <div className="flex-1">
-                    <h3 className="text-gray-200 text-2xl leading-relaxed text-center lg:text-left">
-                      Or anonymously stay in touch over the Chat by scanning the code!
-                    </h3>
-                  </div>
-                  {/* QR Code */}
-                  <div className="flex-1 flex justify-center">
-                    {qrCodeUrl ? (
-                      <div className="space-y-4">
-                        <div className="flex justify-center">
-                          <img
-                            src={qrCodeUrl}
-                            alt="Scan to join chat"
-                            className="bg-white p-2 rounded-lg shadow-lg"
-                            style={{ maxWidth: '200px', height: 'auto' }}
-                          />
-                        </div>
-                        {/* {localIP && (
-                          <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-                            <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
-                            <p className="text-xs text-green-400 font-mono break-all">
-                              http://{localIP}:8080
-                            </p>
-                            <Button
-                              onClick={copyToClipboard}
-                              variant="outline"
-                              size="sm"
-                              className="mt-2 text-xs"
-                            >
-                              Copy Link
-                            </Button>
+                <Card className="mt-10 mb-8 gap-6 items-center bg-black/50 border-0 p-6">
+                  <div className="mt-6 mb-8 flex flex-col lg:flex-row items-center justify-center gap-8">
+                    <div className="flex-1">
+                      <h3 className="text-gray-200 text-2xl leading-relaxed text-center lg:text-left">
+                        Or anonymously stay in touch over the Chat by scanning the code!
+                      </h3>
+                    </div>
+                    {/* QR Code */}
+                    <div className="flex-1 flex justify-center">
+                      {qrCodeUrl ? (
+                        <div className="space-y-4">
+                          <div className="flex justify-center">
+                            <img
+                              src={qrCodeUrl}
+                              alt="Scan to join chat"
+                              className="bg-white p-2 rounded-lg shadow-lg"
+                              style={{ maxWidth: '200px', height: 'auto' }}
+                            />
                           </div>
-                        )} */}
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-                        <p className="text-gray-400">Generating QR code...</p>
-                      </div>
-                    )}
+                          {/* {localIP && (
+                            <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+                              <p className="text-xs text-gray-400 mb-2">Or visit manually:</p>
+                              <p className="text-xs text-green-400 font-mono break-all">
+                                http://{localIP}:8080
+                              </p>
+                              <Button
+                                onClick={copyToClipboard}
+                                variant="outline"
+                                size="sm"
+                                className="mt-2 text-xs"
+                              >
+                                Copy Link
+                              </Button>
+                            </div>
+                          )} */}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                          <p className="text-gray-400">Generating QR code...</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Card>
               )}
             </Card>
           )}

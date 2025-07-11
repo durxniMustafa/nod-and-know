@@ -181,50 +181,56 @@ const Index = () => {
       console.warn('Server IP lookup failed:', err);
     }
 
-    try {
-      setIpDetectionMethod('Detecting local IP via WebRTC...');
-      
-      // Method 1: Try to get local IP using WebRTC
-      const pc = new RTCPeerConnection({ 
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // Add STUN server for better results
-      });
-      pc.createDataChannel('');
-      
-      return new Promise((resolve) => {
-        let resolved = false;
-        
-        pc.onicecandidate = (event) => {
-          if (event.candidate && !resolved) {
+      try {
+        setIpDetectionMethod('Detecting local IP via WebRTC...');
+
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        pc.createDataChannel('');
+
+        return new Promise((resolve) => {
+          let resolved = false;
+          let fallbackIP: string | null = null;
+          const privateIPRegex = /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/;
+
+          pc.onicecandidate = (event) => {
+            if (!event.candidate || resolved) return;
             const candidate = event.candidate.candidate;
             const ipMatch = candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-            if (ipMatch && ipMatch[1] !== '127.0.0.1' && !ipMatch[1].startsWith('169.254')) {
-              setIpDetectionMethod(`Found IP: ${ipMatch[1]} via WebRTC`);
-              pc.close();
+            const ip = ipMatch?.[1];
+            if (!ip || ip === '127.0.0.1' || ip.startsWith('169.254')) return;
+
+            if (privateIPRegex.test(ip)) {
+              setIpDetectionMethod(`Private IP detected: ${ip}`);
               resolved = true;
-              resolve(ipMatch[1]);
+              pc.close();
+              resolve(ip);
+            } else if (!fallbackIP) {
+              fallbackIP = ip;
+            }
+          };
+
+          pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+
+          setTimeout(async () => {
+            if (resolved) return;
+            pc.close();
+
+            if (fallbackIP) {
+              setIpDetectionMethod(`No private IP found, using ${fallbackIP}`);
+              resolve(fallbackIP);
               return;
             }
-          }
-        };
-        
-        pc.createOffer().then(offer => pc.setLocalDescription(offer));
-        
-        // If no IP is obtained within 3 seconds, try alternative methods
-        setTimeout(async () => {
-          if (!resolved) {
-            resolved = true;
-            pc.close();
-            
-            // Method 2: Try to guess common local IP ranges
+
             const commonIPs = [
               '192.168.1.100', '192.168.1.101', '192.168.1.102', '192.168.1.103',
               '192.168.0.100', '192.168.0.101', '192.168.0.102', '192.168.0.103',
               '10.0.0.100', '10.0.0.101', '10.0.0.102', '10.0.0.103'
             ];
-            
+
             setIpDetectionMethod('WebRTC failed, testing common IP ranges...');
-            
-            // Test which IP can reach back to this server
+
             for (const testIP of commonIPs) {
               try {
                 await fetch(`http://${testIP}:3001/ip`, {
@@ -239,18 +245,16 @@ const Index = () => {
                 // Continue to next IP
               }
             }
-            
-            // Method 3: Ask user to manually enter IP
+
             setIpDetectionMethod('Unable to auto-detect IP. Please enter manually below.');
             resolve('AUTO_DETECT_FAILED');
-          }
-        }, 3000);
-      });
-    } catch (error) {
-      console.warn('Unable to get local IP address:', error);
-      setIpDetectionMethod(`Error occurred: ${error.message}. Please enter IP manually.`);
-      return 'AUTO_DETECT_FAILED';
-    }
+          }, 3000);
+        });
+      } catch (error) {
+        console.warn('Unable to get local IP address:', error);
+        setIpDetectionMethod(`Error occurred: ${error.message}. Please enter IP manually.`);
+        return 'AUTO_DETECT_FAILED';
+      }
   };
 
   // Enhanced Generate QR code URL with detailed loading states

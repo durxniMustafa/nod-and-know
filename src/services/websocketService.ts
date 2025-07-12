@@ -52,9 +52,10 @@ class WebSocketService {
 
   connect(callbacks: WebSocketServiceCallbacks) {
     this.callbacks = callbacks;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url =
       import.meta.env.VITE_WS_URL ||
-      `${window.location.protocol}//${window.location.hostname}:3001`;
+      `${protocol}//${window.location.host}`;
     this.socket = io(url);
 
     this.socket.on('connect', () => {

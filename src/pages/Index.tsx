@@ -173,7 +173,7 @@ const Index = () => {
   /* ---------- 1. try server helper ---------- */
   try {
     setIpDetectionMethod('Requesting IP from server…');
-    const res = await fetch(`${window.location.protocol}//${window.location.hostname}:3001/ip`);
+    const res = await fetch(`${window.location.origin}/ip`);
     if (res.ok) {
       const { ip } = await res.json();
       const priv = toPrivate(ip);
@@ -238,7 +238,8 @@ const Index = () => {
       setQrGenerationStage('generating-qr');
       
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
-      const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const chatUrl = `${window.location.protocol}//${ip}${port}?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
       
       // Use online QR code generation service
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
@@ -457,7 +458,8 @@ const Index = () => {
   const copyToClipboard = async () => {
     if (localIP && localIP !== 'AUTO_DETECT_FAILED') {
       const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
-      const chatUrl = `http://${localIP}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const chatUrl = `${window.location.protocol}//${localIP}${port}?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
 
       try {
         await navigator.clipboard.writeText(chatUrl);
@@ -572,7 +574,7 @@ const Index = () => {
                         <div className="mt-4 p-4 bg-gray-800 rounded-lg">
                           <p className="text-gray-300 text-sm mb-2">Or type this URL manually:</p>
                           <code className="text-green-400 text-xs break-all">
-                            http://{localIP}:8080?room={encodeURIComponent(`question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`)}&topic={encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}
+                            {`${window.location.protocol}//${localIP}${window.location.port ? `:${window.location.port}` : ''}?room=${encodeURIComponent(`question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`}
                           </code>
                           <Button
                             onClick={copyToClipboard}
@@ -629,7 +631,7 @@ const Index = () => {
                           {localIP && localIP !== 'AUTO_DETECT_FAILED' && (
                             <div className="text-center">
                               <p className="text-lg font-mono text-green-400 bg-gray-800 px-3 py-1 rounded">
-                                {localIP}:8080
+                                {`${localIP}${window.location.port ? `:${window.location.port}` : ''}`}
                               </p>
                               <p className="text-xs text-gray-400 mt-1">
                                 Local IP Address

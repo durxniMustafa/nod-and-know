@@ -179,7 +179,8 @@ Keep your main answer concise for chat flow, but make it valuable and specific.`
   }
 }
 
-// Better HTTP AI endpoint
+// Add this to your server.js, replace the existing HTTP handling
+
 const httpServer = createServer(async (req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -192,6 +193,59 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // Handle POST requests to /ai-answer
+  if (req.method === 'POST' && req.url === '/ai-answer') {
+    let body = '';
+
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+
+    req.on('end', async () => {
+      try {
+        const { question, context, previousMessages } = JSON.parse(body);
+
+        if (!question) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing question' }));
+          return;
+        }
+
+        // Build message history for context
+        const messages = [];
+        if (previousMessages && previousMessages.length > 0) {
+          previousMessages.slice(-3).forEach(msg => {
+            if (msg.userId !== 'system' && msg.userId !== 'deepseek') {
+              messages.push({ role: 'user', content: `${msg.username}: ${msg.text}` });
+            }
+          });
+        }
+        messages.push({ role: 'user', content: question });
+
+        const answer = await callDeepSeek(messages, { topic: context });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          answer: answer.answer,
+          followUpQuestions: answer.followUp,
+          quickTips: answer.quickTips,
+          timestamp: new Date().toISOString(),
+          responseTime: answer.responseTime
+        }));
+
+      } catch (err) {
+        log('error', '❌ POST AI request failed:', err.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'AI service temporarily unavailable',
+          answer: "I'm having trouble connecting to the AI service right now. Please try again in a moment."
+        }));
+      }
+    });
+    return;
+  }
+
+  // Keep existing GET handler for /ai-answer
   if (req.method === 'GET' && req.url && req.url.startsWith('/ai-answer')) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const question = url.searchParams.get('q');
@@ -227,7 +281,7 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  // Return server IP address for client-side QR generation
+  // Rest of your existing endpoints...
   if (req.method === 'GET' && req.url === '/ip') {
     const ip = getServerIP();
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -235,7 +289,6 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  // Health check
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({

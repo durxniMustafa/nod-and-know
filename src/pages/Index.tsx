@@ -20,10 +20,10 @@ export interface SecurityQuestionSet {
 }
 
 const SECURITY_INFOS = [
-  "36% of Americans use a password manager.",
-  "81% of data breaches are caused by weak or reused passwords.",
-  "Only 10% of people use two-factor authentication on all accounts.",
-  "Public WiFi can expose your data to attackers—use a VPN for safety.",
+  "36% of Americans use a password manager.", //https://www.security.org/digital-safety/password-manager-annual-report/
+  "81% of company data breaches are caused by poor passwords.", //https://bnd.nd.gov/81-of-company-data-breaches-due-to-poor-passwords/
+  "45% of internet users have enabled 2FA on at least‌ one of their accounts.", //https://www.enterpriseappstoday.com/stats/two-factor-authentication-statistics.html?
+  "Public WiFi can expose your data to attackers — use a VPN for safety.",
   "Regularly updating software helps protect against security vulnerabilities.",
   "Back up your important files to avoid data loss from ransomware.",
   "Never share your login credentials, even with close friends.",

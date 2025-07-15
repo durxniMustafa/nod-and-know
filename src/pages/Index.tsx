@@ -166,94 +166,94 @@ const Index = () => {
   const faceVotesRef = useRef<Record<number, Set<number>>>({});
 
 
-  // Enhanced function to get local IP address with better fallback methods
+  // Enhanced function to get local IP address with retries and WebRTC fallback
   const getLocalIPAddress = async (): Promise<string | 'AUTO_DETECT_FAILED'> => {
-  const toPrivate = (ip: string | undefined) => (ip && isPrivateIP(ip) ? ip : undefined);
+    const toPrivate = (ip: string | undefined) => (ip && isPrivateIP(ip) ? ip : undefined);
 
-  /* ---------- 1. try server helper ---------- */
-  try {
-    setIpDetectionMethod('Requesting IP from server…');
-    const res = await fetch(`${window.location.protocol}//${window.location.hostname}:3001/ip`);
-    if (res.ok) {
-      const { ip } = await res.json();
-      const priv = toPrivate(ip);
-      if (priv) {
-        setIpDetectionMethod(`Private IP from server: ${priv}`);
-        return priv;
-      }
-    }
-  } catch (_) {}
-
-  /* ---------- 2. try WebRTC candidates ---------- */
-  try {
-    setIpDetectionMethod('Detecting via WebRTC…');
-    return await new Promise<string | 'AUTO_DETECT_FAILED'>((resolve) => {
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      pc.createDataChannel('x');           // force ICE gathering
-
-      pc.onicecandidate = ({ candidate }) => {
-        if (!candidate) return;
-        const ip = (candidate as any).address ||
-                   candidate.candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
-        const priv = toPrivate(ip);
-        if (priv) {
-          setIpDetectionMethod(`Private IP via WebRTC: ${priv}`);
-          pc.close();
-          resolve(priv);
+    /* ---------- 1. try server helper (multiple attempts) ---------- */
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        setIpDetectionMethod(`Requesting IP from server… (try ${attempt}/3)`);
+        const res = await fetch(`${window.location.protocol}//${window.location.hostname}:3001/ip`);
+        if (res.ok) {
+          const { ip } = await res.json();
+          const priv = toPrivate(ip);
+          if (priv) {
+            setIpDetectionMethod(`Private IP from server: ${priv}`);
+            return priv;
+          }
         }
-      };
+      } catch (_) {}
+      await new Promise(r => setTimeout(r, 500));
+    }
 
-      pc.createOffer().then(o => pc.setLocalDescription(o));
-
-      setTimeout(() => { pc.close(); resolve('AUTO_DETECT_FAILED'); }, 3000);
-    });
-  } catch (_) {}
-
-  setIpDetectionMethod('No private IP found; need manual entry.');
-  return 'AUTO_DETECT_FAILED';
-};
-
-
-  // Enhanced Generate QR code URL with detailed loading states
-  const generateQRCode = useCallback(async () => {
+    /* ---------- 2. try WebRTC candidates ---------- */
     try {
-      setQrGenerationStage('getting-ip');
-      setQrCodeUrl(''); // Clear existing QR code
-      
-      let ip = await getLocalIPAddress();
-      
-      // If auto-detection failed, check if we have manual IP
-      if (ip === 'AUTO_DETECT_FAILED') {
-        if (manualIP && manualIP.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
-          ip = manualIP;
-          setIpDetectionMethod(`Using manual IP: ${ip}`);
-        } else {
-          setShowManualIP(true);
-          setQrGenerationStage('idle');
-          return;
-        }
-      }
-      
-      setLocalIP(ip);
-      setQrGenerationStage('generating-qr');
-      
-      const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
-      const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
-      
-      // Use online QR code generation service
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
-      setQrCodeUrl(qrUrl);
-      
-      setQrGenerationStage('complete');
-      setShowManualIP(false);
-      
-      console.log('Generated chat URL:', chatUrl);
-    } catch (error) {
-      console.error('Failed to generate QR code:', error);
+      setIpDetectionMethod('Detecting via WebRTC…');
+      return await new Promise<string | 'AUTO_DETECT_FAILED'>((resolve) => {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        pc.createDataChannel('x');           // force ICE gathering
+
+        pc.onicecandidate = ({ candidate }) => {
+          if (!candidate) return;
+          const ip = (candidate as any).address ||
+                     candidate.candidate.match(/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
+          const priv = toPrivate(ip);
+          if (priv) {
+            setIpDetectionMethod(`Private IP via WebRTC: ${priv}`);
+            pc.close();
+            resolve(priv);
+          }
+        };
+
+        pc.createOffer().then(o => pc.setLocalDescription(o));
+
+        setTimeout(() => { pc.close(); resolve('AUTO_DETECT_FAILED'); }, 5000);
+      });
+    } catch (_) {}
+
+    setIpDetectionMethod('No private IP found; need manual entry.');
+    return 'AUTO_DETECT_FAILED';
+  };
+
+
+  // Detect IP address and update state
+  const detectLocalIP = useCallback(async () => {
+    setQrGenerationStage('getting-ip');
+    setQrCodeUrl('');
+    const ip = await getLocalIPAddress();
+    if (ip === 'AUTO_DETECT_FAILED') {
+      setShowManualIP(true);
       setQrGenerationStage('idle');
-      toast('Failed to generate QR code, please check network connection');
+      return;
     }
-  }, [currentQuestion, manualIP]);
+    setLocalIP(ip);
+    setShowManualIP(false);
+  }, []);
+
+  // Generate QR code using the detected IP
+  const generateQRCode = useCallback((ipOverride?: string) => {
+    const ip = ipOverride || localIP;
+    if (!ip) return;
+    setQrGenerationStage('generating-qr');
+    setQrCodeUrl('');
+
+    const roomId = `question_${btoa(SECURITY_QUESTIONS[currentQuestion].question).slice(0, 8)}`;
+    const chatUrl = `http://${ip}:8080?room=${encodeURIComponent(roomId)}&topic=${encodeURIComponent(SECURITY_QUESTIONS[currentQuestion].question)}`;
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(chatUrl)}`;
+    setQrCodeUrl(qrUrl);
+    setQrGenerationStage('complete');
+
+    console.log('Generated chat URL:', chatUrl);
+  }, [currentQuestion, localIP]);
+
+  const handleManualIPSubmit = useCallback(() => {
+    if (manualIP.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+      setLocalIP(manualIP);
+      setShowManualIP(false);
+    }
+  }, [manualIP]);
 
   // On mount, load session data
   useEffect(() => {
@@ -275,16 +275,16 @@ const Index = () => {
       return;
     }
 
-    generateQRCode();
+    detectLocalIP();
     // ACHTUNG: Dependency-Array leer lassen!
   }, []);
 
   // Regenerate QR code when question changes (only if not in QR mode)
   useEffect(() => {
-    if (!qrRoomId) {
+    if (!qrRoomId && localIP) {
       generateQRCode();
     }
-  }, [currentQuestion, generateQRCode, qrRoomId]);
+  }, [currentQuestion, generateQRCode, qrRoomId, localIP]);
 
   // Fetch AI answer when question changes
   useEffect(() => {
@@ -600,7 +600,7 @@ const Index = () => {
                               className="flex-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 focus:border-purple-500 focus:outline-none"
                             />
                             <Button
-                              onClick={() => generateQRCode()}
+                              onClick={() => handleManualIPSubmit()}
                               disabled={!manualIP.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)}
                               size="sm"
                             >
